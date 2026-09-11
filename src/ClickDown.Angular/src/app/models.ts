@@ -13,14 +13,14 @@ export interface Task {
   id: string; custom_id: string | null; name: string;
   status: Status; priority: Priority | null;
   assignees: User[]; tags: Tag[];
-  due_date: number | null;          // epoch ms
+  due_date: number | null; date_created: number | null;  // epoch ms
   parent: string | null;
 }
 export interface TaskDetail extends Task {
   subtasks: Task[]; description_html: string;
   list: { id: string; name: string } | null;
   creator: User | null;
-  date_created: number | null; date_updated: number | null; start_date: number | null;  // epoch ms
+  date_updated: number | null; start_date: number | null;  // epoch ms
   time_estimate: number | null;     // ms
   points: number | null;
 }

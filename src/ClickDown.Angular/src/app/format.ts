@@ -5,8 +5,11 @@ const weekday = new Intl.DateTimeFormat(EN, { weekday: 'short' });
 const monthDay = new Intl.DateTimeFormat(EN, { month: 'short', day: 'numeric' });
 const date = new Intl.DateTimeFormat(EN, { month: 'short', day: 'numeric', year: 'numeric' });
 const dateTime = new Intl.DateTimeFormat(EN, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+const month = new Intl.DateTimeFormat(EN, { month: 'short' });
 const relative = new Intl.RelativeTimeFormat(EN, { numeric: 'auto' });
+const span = new Intl.RelativeTimeFormat(EN, { numeric: 'always' });
 const startOfDay = (ms: number) => new Date(ms).setHours(0, 0, 0, 0);
+const two = (n: number) => String(n).padStart(2, '0');
 
 export interface Due { text: string; overdue: boolean; title: string }
 
@@ -21,20 +24,35 @@ export function dueInfo(ms: number | null, closed: boolean, now = Date.now()): D
   return { text, overdue, title: `${overdue ? 'Overdue. ' : ''}Due ${dateTime.format(ms)}` };
 }
 
-/** "just now", "3 hours ago", "yesterday", or the date once it's over 45 days away. */
-export function ago(ms: number | null, now = Date.now()): string | null {
+/** "just now", "3 hours ago", "yesterday", "1 month ago", "2 years ago": always relative, so a column of them lines up. */
+export function age(ms: number | null, now = Date.now()): string | null {
   if (!ms) return null;
   const s = (ms - now) / 1000;
-  const abs = Math.abs(s);
-  if (abs < 60) return 'just now';
-  if (abs < 3600) return relative.format(Math.round(s / 60), 'minute');
-  if (abs < 86_400) return relative.format(Math.round(s / 3600), 'hour');
-  if (abs < 45 * 86_400) return relative.format(Math.round(s / 86_400), 'day');
-  return date.format(ms);
+  if (Math.abs(s) < 60) return 'just now';
+  // Rounded before the unit is picked: "1 hour ago", never "60 minutes ago".
+  const minutes = Math.round(s / 60);
+  if (Math.abs(minutes) < 60) return relative.format(minutes, 'minute');
+  const hours = Math.round(s / 3600);
+  if (Math.abs(hours) < 24) return relative.format(hours, 'hour');
+  const days = Math.round(s / 86_400);
+  if (Math.abs(days) < 45) return relative.format(days, 'day');
+  // Months and years are spans, so "1 month ago" rather than the calendar's "last month".
+  const months = Math.round(s / (30.44 * 86_400));
+  return Math.abs(months) < 12 ? span.format(months, 'month') : span.format(Math.round(s / (365.25 * 86_400)), 'year');
 }
+
+/** Like age(), but the date once it's over 45 days away. */
+export const ago = (ms: number | null, now = Date.now()) => (ms && Math.abs(ms - now) >= 45 * DAY ? date.format(ms) : age(ms, now));
 
 export const day = (ms: number | null) => (ms ? date.format(ms) : null);
 export const fullDate = (ms: number | null) => (ms ? dateTime.format(ms) : null);
+
+/** dd MMM yyyy HH:mm in local time, like "05 Sep 2019 16:34". */
+export function stamp(ms: number | null): string | null {
+  if (!ms) return null;
+  const d = new Date(ms);
+  return `${two(d.getDate())} ${month.format(d)} ${d.getFullYear()} ${two(d.getHours())}:${two(d.getMinutes())}`;
+}
 
 export function duration(ms: number): string {
   const minutes = Math.round(ms / 60_000);

@@ -8,7 +8,7 @@ const ada = { user: { id: 1, username: 'Ada', email: null, color: '#7b68ee', ini
 const rejected = { error: 'unauthorized', message: 'Token invalid', config_path: '/x/config.toml' };
 const task = (id: string, status: string, orderindex: number, extra: object = {}) => ({
   id, custom_id: null, name: `Task ${id}`, status: { status, color: '#87909e', type: 'custom', orderindex },
-  priority: null, assignees: [], tags: [], due_date: null, parent: null, ...extra,
+  priority: null, assignees: [], tags: [], due_date: null, date_created: null, parent: null, ...extra,
 });
 
 describe('App', () => {
@@ -97,12 +97,23 @@ describe('App', () => {
   it('groups a list by status, pages through it, and survives a failed page', async () => {
     const fixture = await openList();
     http.expectOne('/api/list/7/task?page=0').flush({
-      tasks: [task('a', 'in progress', 1), task('b', 'to do', 0), task('c', 'in progress', 1)], last_page: false,
+      tasks: [
+        task('a', 'in progress', 1),
+        task('b', 'to do', 0, { custom_id: 'BUG-12', date_created: new Date(2019, 8, 5, 7, 4).getTime() }),
+        task('c', 'in progress', 1),
+      ],
+      last_page: false,
     });
     await settle(fixture);
     const el = fixture.nativeElement as HTMLElement;
     const heads = [...el.querySelectorAll('.group-head')].map((h) => h.textContent);
     expect(heads).toEqual(['To do1', 'In progress2']);
+    expect([...el.querySelectorAll('.task-id')].map((id) => id.textContent)).toEqual(['ID BUG-12', 'ID a', 'ID c']); // custom ID first
+    expect(el.querySelector('.task-id')?.getAttribute('title')).toBe('BUG-12'); // in full, however narrow the column
+    const created = el.querySelectorAll('.created'); // only task b has a date
+    expect(created.length).toBe(1);
+    expect(created[0].textContent).toMatch(/^Created \d+ years ago$/);
+    expect(created[0].getAttribute('title')).toBe('05 Sep 2019 07:04');
     expect(text(fixture)).toContain('3 open tasks so far, closed ones hidden');
     expect(el.querySelectorAll('.lvl.stem-on').length).toBe(4);
     expect(text(fixture)).toContain('No folder');
@@ -175,7 +186,7 @@ describe('App', () => {
     const cy = { id: 3, username: 'Cy', email: null, color: '#94602A', initials: 'C' };
     http.expectOne('/api/task/a').flush({
       ...task('a', 'in progress', 1), priority: { priority: 'high', color: '#f8ae00' },
-      subtasks: [task('s', 'to do', 0, { parent: 'a' })], list: { id: '7', name: 'Bugs' },
+      subtasks: [task('s', 'to do', 0, { parent: 'a', date_created: new Date(2019, 8, 5, 7, 4).getTime() })], list: { id: '7', name: 'Bugs' },
       description_html: '<ul><li><span class="check done" role="img" aria-label="Done"></span>Ship it</li></ul>',
       creator: cy, date_created: now - 3 * 86_400_000, date_updated: now - 3_600_000, start_date: null,
       time_estimate: 5_400_000, points: 3,
@@ -194,6 +205,10 @@ describe('App', () => {
     expect(page).toContain('High');
     expect(page).toContain('1 h 30 min');
     expect(page).toContain('3 days ago by Cy');
+    const createdProp = [...el.querySelectorAll('.props dt')].find((dt) => dt.textContent === 'Created')?.nextElementSibling;
+    expect(createdProp?.querySelector('span')?.getAttribute('title')).toMatch(/^\d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}$/);
+    expect(el.querySelector('.task-doc .created')?.getAttribute('title')).toBe('05 Sep 2019 07:04'); // the subtask's column
+    expect(el.querySelector('.task-doc .task-id')?.textContent).toBe('ID s');
     expect(page).toContain('Unknown user');
     expect(page).toContain('2 replies');
     expect(page.indexOf('First')).toBeLessThan(page.indexOf('Second'));

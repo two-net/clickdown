@@ -1,4 +1,4 @@
-import { ago, color, dueInfo, duration, plural } from './format';
+import { age, ago, color, dueInfo, duration, plural, stamp } from './format';
 
 describe('format', () => {
   const now = new Date(2026, 8, 11, 12).getTime(); // a Friday, local time
@@ -20,8 +20,23 @@ describe('format', () => {
     expect(ago(now - 5 * 60_000, now)).toBe('5 minutes ago');
     expect(ago(now - 3 * 3_600_000, now)).toBe('3 hours ago');
     expect(ago(now - 86_400_000, now)).toBe('yesterday');
+    expect(ago(now - 45 * 86_400_000, now)).toBe('Jul 28, 2026');
     expect(ago(new Date(2026, 5, 13, 12).getTime(), now)).toBe('Jun 13, 2026');
     expect(ago(null, now)).toBeNull();
+  });
+
+  it('keeps ages relative however old, with the exact time to hover', () => {
+    expect(age(now - 59.7 * 60_000, now)).toBe('1 hour ago'); // not "60 minutes ago"
+    expect(age(now - 86_400_000, now)).toBe('yesterday');
+    expect(age(now - 44.7 * 86_400_000, now)).toBe('1 month ago'); // not "45 days ago"
+    expect(age(new Date(2026, 5, 13, 12).getTime(), now)).toBe('3 months ago');
+    expect(age(new Date(2025, 9, 1, 12).getTime(), now)).toBe('11 months ago');
+    expect(age(new Date(2025, 8, 1, 12).getTime(), now)).toBe('1 year ago'); // a span, not the calendar's "last year"
+    expect(age(new Date(2019, 8, 5, 7, 4).getTime(), now)).toBe('7 years ago');
+    expect(age(null, now)).toBeNull();
+    expect(stamp(new Date(2019, 8, 5, 7, 4).getTime())).toBe('05 Sep 2019 07:04');
+    expect(stamp(new Date(2026, 11, 31, 23, 59).getTime())).toBe('31 Dec 2026 23:59');
+    expect(stamp(null)).toBeNull();
   });
 
   it('writes durations and counts, and passes on only plain colors', () => {

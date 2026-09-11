@@ -1,5 +1,5 @@
 import { Component, ElementRef, afterRenderEffect, computed, inject, input } from '@angular/core';
-import { cap, color, dueInfo, plural } from './format';
+import { age, cap, color, dueInfo, plural, stamp } from './format';
 import { Task } from './models';
 import { Frame, Kind, Navigator } from './navigator';
 
@@ -33,9 +33,10 @@ import { Frame, Kind, Navigator } from './navigator';
                    [attr.aria-selected]="i === f.highlight()" (click)="click(f, i, $event)">
                 @if (item.task; as t) {
                   @let due = dueInfo(t.due_date, t.status.type === 'closed');
+                  @let id = t.custom_id || t.id;
                   <span class="row-icon"><span class="sdot" [style.--s]="color(t.status.color)" aria-hidden="true"></span></span>
                   <span class="row-name">{{ t.name }}</span>
-                  <span class="row-meta task-meta">@if (f.kind === 'task') {<span class="pill" [style.--s]="color(t.status.color)"><span class="sdot" aria-hidden="true"></span>{{ cap(t.status.status) }}</span>} @else {<span class="tags">@for (tag of t.tags.slice(0, 2); track tag.name) {<span class="tag" [style.--t]="color(tag.tag_bg || tag.tag_fg)">{{ tag.name }}</span>}</span>}<span>@if (t.priority; as p) {<span [title]="cap(p.priority) + ' priority'"><svg class="flag" viewBox="0 0 16 16" [style.--p]="color(p.color)" aria-hidden="true"><path d="M3 1.5h1.5v13H3z"/><path d="M4.5 2.2h8l-1.8 3.2 1.8 3.2h-8z"/></svg><span class="sr-only">{{ cap(p.priority) }} priority.</span></span>}</span><span>@if (due) {<span class="due" [class.overdue]="due.overdue" [title]="due.title">{{ due.text }}@if (due.overdue) {<span class="sr-only">, overdue</span>}</span>}</span><span>@if (t.assignees.length) {<span class="avatars" [title]="names(t)">@for (a of t.assignees.slice(0, 3); track a.id) {<span class="av" [style.--av]="color(a.color)" aria-hidden="true">{{ a.initials }}</span>}<span class="sr-only">Assigned to {{ names(t) }}.</span></span>}</span></span>
+                  <span class="row-meta task-meta">@if (f.kind === 'task') {<span class="pill" [style.--s]="color(t.status.color)" [title]="cap(t.status.status)"><span class="sdot" aria-hidden="true"></span><span>{{ cap(t.status.status) }}</span></span>} @else {<span class="tags">@for (tag of t.tags.slice(0, 2); track tag.name) {<span class="tag" [style.--t]="color(tag.tag_bg || tag.tag_fg)" [title]="tag.name">{{ tag.name }}</span>}</span>}<span class="task-id" [title]="id"><span class="sr-only">ID </span><bdi>{{ id }}</bdi></span><span>@if (t.priority; as p) {<span [title]="cap(p.priority) + ' priority'"><svg class="flag" viewBox="0 0 16 16" [style.--p]="color(p.color)" aria-hidden="true"><path d="M3 1.5h1.5v13H3z"/><path d="M4.5 2.2h8l-1.8 3.2 1.8 3.2h-8z"/></svg><span class="sr-only">{{ cap(p.priority) }} priority.</span></span>}</span><span>@if (due) {<span class="due" [class.overdue]="due.overdue" [title]="due.title">{{ due.text }}@if (due.overdue) {<span class="sr-only">, overdue</span>}</span>}</span><span>@if (t.date_created) {<span class="created" [title]="stamp(t.date_created)"><span class="sr-only">Created </span>{{ age(t.date_created) }}</span>}</span><span>@if (t.assignees.length) {<span class="avatars" [title]="names(t)">@for (a of t.assignees.slice(0, 3); track a.id) {<span class="av" [style.--av]="color(a.color)" aria-hidden="true">{{ a.initials }}</span>}<span class="sr-only">Assigned to {{ names(t) }}.</span></span>}</span></span>
                 } @else if (item.open === 'more') {
                   <span class="row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
                   <span class="row-name">{{ f.busy() === 'Loading more' ? 'Loading more tasks…' : 'Load more tasks' }}</span>
@@ -70,10 +71,12 @@ import { Frame, Kind, Navigator } from './navigator';
 export class ItemList {
   readonly frame = input.required<Frame>();
   protected readonly nav = inject(Navigator);
+  protected readonly age = age;
   protected readonly cap = cap;
   protected readonly color = color;
   protected readonly dueInfo = dueInfo;
   protected readonly plural = plural;
+  protected readonly stamp = stamp;
   /** Where each group's rows start in the frame's flat list of items. */
   protected readonly starts = computed(() => {
     let n = 0;

@@ -306,6 +306,8 @@ pub struct Task {
     pub tags: Vec<Tag>,
     #[serde(default, deserialize_with = "lenient_int")]
     pub due_date: Option<u64>,
+    #[serde(default, deserialize_with = "lenient_int")]
+    pub date_created: Option<u64>,
     pub parent: Option<String>,
 }
 
@@ -344,8 +346,6 @@ pub struct TaskDetail {
     #[serde(default)]
     pub list: Option<ListRef>,
     pub creator: Option<User>,
-    #[serde(default, deserialize_with = "lenient_int")]
-    pub date_created: Option<u64>,
     #[serde(default, deserialize_with = "lenient_int")]
     pub date_updated: Option<u64>,
     #[serde(default, deserialize_with = "lenient_int")]
@@ -408,6 +408,7 @@ mod tests {
         assert_eq!(first.priority.as_ref().map(|p| p.priority.as_str()), Some("normal"));
         assert!(second.priority.is_none());
         assert_eq!(first.due_date, Some(1508369194377));
+        assert_eq!(first.date_created, Some(1567780450202)); // sent as a string
         assert_eq!(first.assignees[0].initials.as_deref(), Some("AJ"));
         assert_eq!(first.status.kind.as_deref(), Some("custom"));
         assert_eq!((first.status.orderindex, second.status.orderindex), (Some(1), Some(0)));
@@ -417,6 +418,7 @@ mod tests {
         let task = &json["tasks"][0];
         assert_eq!(task["status"]["type"], "custom");
         assert_eq!(task["due_date"], 1508369194377u64);
+        assert_eq!(task["date_created"], 1567780450202u64);
         assert!(task.get("url").is_none()); // nothing in the UI uses it
         assert_eq!(json["tasks"][1].get("priority"), Some(&serde_json::Value::Null));
         assert_eq!(json["last_page"], true);
@@ -428,12 +430,13 @@ mod tests {
         let task: TaskDetail = serde_json::from_value(fixture["tasks"][0].clone()).unwrap();
         let creator = task.creator.as_ref().and_then(|c| c.username.as_deref());
         assert_eq!(creator, Some("Alex Johnson"));
-        assert_eq!(task.date_created, Some(1567780450202));
+        assert_eq!(task.task.date_created, Some(1567780450202));
         assert_eq!(task.time_estimate, Some(8640000)); // sent as a string
         assert_eq!(task.points, Some(3.0));
         assert_eq!(task.start_date, None);
 
         let json = serde_json::to_value(&task).unwrap();
+        assert_eq!(json["date_created"], 1567780450202u64); // flattened, where the UI reads it
         assert_eq!(json["list"]["name"], "Sprint Backlog");
         assert!(json.get("text_content").is_none());
 

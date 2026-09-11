@@ -1,5 +1,5 @@
 import { Component, computed, inject, input } from '@angular/core';
-import { ago, cap, color, day, dueInfo, duration, fullDate, plural } from './format';
+import { age, ago, cap, color, day, dueInfo, duration, fullDate, plural, stamp } from './format';
 import { ItemList } from './item-list';
 import { Frame, Navigator, describe } from './navigator';
 
@@ -55,7 +55,7 @@ import { Frame, Navigator, describe } from './navigator';
           }
           @if (t.date_created) {
             <dt>Created</dt>
-            <dd><span [title]="fullDate(t.date_created)">{{ ago(t.date_created) }} by {{ t.creator?.username || 'someone' }}</span></dd>
+            <dd><span [title]="stamp(t.date_created)">{{ age(t.date_created) }} by {{ t.creator?.username || 'someone' }}</span></dd>
           }
           @if (t.date_updated) {
             <dt>Updated</dt>
@@ -125,6 +125,7 @@ import { Frame, Navigator, describe } from './navigator';
 export class TaskDetail {
   readonly frame = input.required<Frame>();
   protected readonly nav = inject(Navigator);
+  protected readonly age = age;
   protected readonly ago = ago;
   protected readonly cap = cap;
   protected readonly color = color;
@@ -134,6 +135,7 @@ export class TaskDetail {
   protected readonly duration = duration;
   protected readonly fullDate = fullDate;
   protected readonly plural = plural;
+  protected readonly stamp = stamp;
   /** ClickUp pages comments newest first; they read oldest first. */
   protected readonly oldestFirst = computed(() => [...(this.frame().comments() ?? [])].reverse());
   protected readonly commentCount = computed(() => {

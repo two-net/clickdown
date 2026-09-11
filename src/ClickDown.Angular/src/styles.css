@@ -95,7 +95,7 @@ code,kbd,pre{font-family:var(--mono)}
 .view-body{flex:1;overflow:auto;padding:4px 20px 80px;outline:none}
 
 /* Rows */
-.rows{max-width:980px;outline:none}
+.rows{max-width:980px;outline:none;container-type:inline-size}
 .group-head{display:flex;align-items:center;gap:8px;padding:18px 12px 6px;font-size:14px;font-weight:620;color:var(--slate)}
 .group-head .count{font-weight:400;color:var(--faint)}
 .sub-head{margin:6px 0 2px;padding:12px 12px 4px;font-size:14px;font-weight:620;color:var(--slate)}
@@ -109,7 +109,18 @@ code,kbd,pre{font-family:var(--mono)}
 .row-icon svg{width:18px;height:18px}
 .row-name{line-height:1.35;overflow-wrap:anywhere}
 .row-meta{display:flex;align-items:center;gap:12px;font-size:14px;color:var(--slate);white-space:nowrap}
-.task-meta{display:grid;grid-template-columns:auto 16px 96px 62px;justify-items:end}
+.task-meta{display:grid;grid-template-columns:fit-content(160px) 76px 16px 96px 100px 62px;justify-items:end}
+/* Long tags and statuses give way before the name does. */
+.task-meta>:first-child{min-width:0;max-width:100%}
+.task-meta .tag,.task-meta .pill>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* A long ID loses its start, not the number that tells it apart ("…FRA-1234"); the <bdi> inside keeps its characters in order. */
+.task-id{justify-self:stretch;overflow:hidden;text-overflow:ellipsis;font:13px var(--mono);direction:rtl;text-align:left}
+/* A narrow list keeps room for the names: the created column goes first, then the ID, until the rows stack (max-width:560px).
+   A task's subtasks are 780px wide, so they keep both. */
+@media (min-width:561px){
+  @container (max-width:779px){.task-meta{grid-template-columns:fit-content(160px) 76px 16px 96px 62px}.task-meta>:nth-child(5){display:none}}
+  @container (max-width:699px){.task-meta{grid-template-columns:fit-content(160px) 16px 96px 62px}.task-meta>:nth-child(2){display:none}}
+}
 .row.more .row-name{font-weight:620;color:var(--d4)}
 .row.more .row-icon{color:var(--d4)}
 .sq{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:6px;background:var(--sq);color:#fff;font-size:13px;font-weight:700;text-transform:uppercase}
