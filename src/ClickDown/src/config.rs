@@ -19,9 +19,13 @@ pub struct Config {
     pub animations: bool,
     /// Ids of the only lists to show; empty means everything the token can see.
     pub only_lists: Vec<String>,
+    /// Host header values answered besides 127.0.0.1:4280 and localhost:4280, for a reverse
+    /// proxy in front of ClickDown; empty means only those two.
+    pub allowed_hosts: Vec<String>,
 }
 
-/// The file as written: every key but `only_lists` is required, and unknown keys are errors.
+/// The file as written: every key but `only_lists` and `allowed_hosts` is required, and unknown
+/// keys are errors.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawConfig {
@@ -31,6 +35,8 @@ struct RawConfig {
     animations: bool,
     #[serde(default)]
     only_lists: Vec<String>,
+    #[serde(default)]
+    allowed_hosts: Vec<String>,
 }
 
 /// The ClickUp API token. It masks itself when printed; only api.rs calls `expose()`.
@@ -113,6 +119,19 @@ pub fn parse(text: &str, path: &Path) -> Result<Config, String> {
              ClickUp URL, like only_lists = [\"901234567\"].",
         ));
     }
+    let allowed_hosts: Vec<String> =
+        raw.allowed_hosts.iter().map(|host| host.trim().to_string()).collect();
+    // A host name or [IPv6 address] with an optional :port. No `_`, so a misplaced token is
+    // refused, unechoed too: allowed hosts end up in the log.
+    let host_name = |host: &String| {
+        !host.is_empty() && host.chars().all(|c| c.is_ascii_alphanumeric() || ".-:[]".contains(c))
+    };
+    if !allowed_hosts.iter().all(host_name) {
+        return Err(problem(
+            "allowed_hosts must hold host names as the browser's address bar shows them, with :port\n\
+             only if the address has one, like allowed_hosts = [\"clickdown.example.com\"].",
+        ));
+    }
     Ok(Config {
         token: Token(token.to_string()),
         log_level,
@@ -120,6 +139,7 @@ pub fn parse(text: &str, path: &Path) -> Result<Config, String> {
         log_file: path.parent().unwrap_or(Path::new("")).join(raw.log_file),
         animations: raw.animations,
         only_lists,
+        allowed_hosts,
     })
 }
 
@@ -170,7 +190,7 @@ mod tests {
         assert_eq!(config.log_level, LevelFilter::DEBUG);
         assert_eq!(config.log_file, Path::new(env!("CARGO_MANIFEST_DIR")).join("logs/x.log"));
         assert!(!config.animations);
-        assert!(config.only_lists.is_empty());
+        assert!(config.only_lists.is_empty() && config.allowed_hosts.is_empty());
         assert!(!format!("{config:?}").contains(TOKEN));
     }
 
@@ -201,6 +221,7 @@ mod tests {
             format!("{good}{TOKEN} = 1\n"),
             file(TOKEN, TOKEN),
             format!("{good}only_lists = [\"{TOKEN}\"]\n"),
+            format!("{good}allowed_hosts = [\"{TOKEN}\"]\n"),
         ] {
             let message = parse(&text, Path::new(CONFIG_PATH)).unwrap_err();
             assert!(!message.contains(&TOKEN[3..]), "{message}");
@@ -224,6 +245,31 @@ mod tests {
         assert_eq!(config.only_lists, ["901234567", "42"]);
         for bad in [r#"[""]"#, r#"["../team"]"#, r#"["abc"]"#, r#"["1%2F"]"#, r#""901""#] {
             let text = format!("{base}only_lists = {bad}\n");
+            assert!(parse(&text, Path::new(CONFIG_PATH)).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn allowed_hosts_holds_host_names() {
+        let base = file(TOKEN, "info");
+        let text = format!(
+            "{base}allowed_hosts = [\" Click-Down.Example.com \", \"proxy.test:8443\", \"[::1]:8443\"]\n"
+        );
+        let config = parse(&text, Path::new(CONFIG_PATH)).unwrap();
+        assert_eq!(
+            config.allowed_hosts,
+            ["Click-Down.Example.com", "proxy.test:8443", "[::1]:8443"]
+        );
+        for bad in [
+            r#"[""]"#,
+            r#"["*"]"#,
+            r#"["*.example.com"]"#,
+            r#"["https://x.test"]"#,
+            r#"["x.test/"]"#,
+            r#"["a b"]"#,
+            r#""x.test""#,
+        ] {
+            let text = format!("{base}allowed_hosts = {bad}\n");
             assert!(parse(&text, Path::new(CONFIG_PATH)).is_err(), "{bad}");
         }
     }

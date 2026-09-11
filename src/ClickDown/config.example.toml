@@ -6,3 +6,7 @@ animations = true
 # Optional: show only these lists. A list's id is the part after /li/ in its ClickUp URL
 # (https://app.clickup.com/<workspace>/v/li/<list id>). Leave it out to browse everything.
 # only_lists = ["901234567"]
+
+# Optional: also answer requests for these names, for a reverse proxy or tunnel on this machine
+# (see README.md). ClickDown has no login: whoever can reach the proxy reads everything your token can.
+# allowed_hosts = ["clickdown.example.com"]

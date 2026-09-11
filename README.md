@@ -15,7 +15,8 @@ ClickDown has two halves:
   to the backend. It never sees the token.
 
 The backend listens on 127.0.0.1 only, so nothing outside your machine can reach it. (The container image is
-published on the host's 127.0.0.1 instead; see [Container image](#container-image).)
+published on the host's 127.0.0.1 instead; see [Container image](#container-image).) To open it through a
+reverse proxy or tunnel, see [Behind a reverse proxy](#behind-a-reverse-proxy).
 
 ## 1. Get a personal ClickUp token
 
@@ -37,6 +38,7 @@ log_level = "info"                 # off | error | warn | info | debug | trace
 log_file = "logs/clickdown.log"    # relative to this file's folder
 animations = true
 # only_lists = ["901234567"]       # optional, see below
+# allowed_hosts = ["clickdown.example.com"]  # optional, see below
 ```
 
 | key | meaning |
@@ -46,10 +48,11 @@ animations = true
 | `log_file` | where the log is written; a relative path is relative to the config file's folder |
 | `animations` | `true` or `false`; `false` turns every animation off, including the splash (so does your system's reduced-motion setting) |
 | `only_lists` | optional; ids of the only lists to show (see below) |
+| `allowed_hosts` | optional; other names to answer, for a reverse proxy (see below) |
 
 This file is the **only** place ClickDown gets settings from: no environment variables, no `.env`, no
 command-line flags. It's read once at startup, so restart ClickDown after editing it. The first four keys are
-required, `only_lists` is optional, and unknown keys are an error.
+required, `only_lists` and `allowed_hosts` are optional, and unknown keys are an error.
 
 ### Showing only some lists
 
@@ -63,6 +66,22 @@ loaded (a typo, a deleted list) gets its own row; open it to see why. After rest
 This is a filter, not a security boundary. Whoever can edit `config.toml` can remove it, and can read the token,
 which has all of its owner's access. To really limit someone, invite them to ClickUp as a guest with access to
 just that list and let them use their own token (with or without `only_lists`).
+
+### Behind a reverse proxy
+
+ClickDown only answers requests addressed to `127.0.0.1:4280` or `localhost:4280`, and refuses the rest with
+`{"error":"forbidden"}`. That stops DNS rebinding: without it, any web page you visit could point its own domain
+at 127.0.0.1 and read your ClickUp through your browser.
+
+To open it through a reverse proxy or tunnel on this machine, have the proxy pass the browser's Host header
+through (Caddy and cloudflared do by default; nginx needs `proxy_set_header Host $http_host;`) and list the names
+you open it under, e.g. `allowed_hosts = ["clickdown.example.com"]`. Write each as the browser's address bar shows
+it, with `:port` only if the address has one, and list only names whose DNS you control. Don't have the proxy
+rewrite the Host header to `127.0.0.1:4280`: every name it answers would then look local, which turns this check
+off. Every refused request is logged as a warning (log_level `warn` or more) with the host it asked for.
+
+ClickDown has no login of its own: whoever can reach the proxy reads everything your token can. Put a login in
+front of it, such as Cloudflare Access or the proxy's basic auth, before it faces the internet.
 
 ## 3. Run it
 

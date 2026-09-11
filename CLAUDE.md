@@ -46,7 +46,7 @@ in the browser talks only to that backend at http://127.0.0.1:4280 and never see
    All CSS in `styles.css`. Animations are native (CSS plus `animate.enter`/`animate.leave`, not
    `@angular/animations`) and obey the `animations` config switch.
 
-Also keep: binding to 127.0.0.1 only (0.0.0.0 only in the `container` build), the Host-header guard, the `/api` path character check, descriptions
+Also keep: binding to 127.0.0.1 only (0.0.0.0 only in the `container` build), the Host-header guard (only 127.0.0.1:4280, localhost:4280 and config's `allowed_hosts`, which is for a reverse proxy), the `/api` path character check, descriptions
 rendering raw HTML as text and images as links, and `only_lists` enforced by the backend (browsing routes not
 registered; lists, tasks and comments outside it refused), never just hidden in the UI. Tests use fixtures, never the real ClickUp API (under `cfg(test)`,
 `api.rs`'s `BASE_URL` is a closed local port). Never commit

@@ -36,7 +36,8 @@ const ADDR: &str = "127.0.0.1:4280";
 /// `docker run -p 127.0.0.1:4280:4280` keeps it on the host's loopback (README.md).
 #[cfg(feature = "container")]
 const ADDR: &str = "0.0.0.0:4280";
-/// What the browser opens, in the container too: the Host guard only lets this (or localhost) in.
+/// What the browser opens, in the container too: the Host guard only lets this, localhost and
+/// config's allowed_hosts in.
 const URL: &str = "http://127.0.0.1:4280";
 const DIST_DIR: &str =
     concat!(env!("CARGO_MANIFEST_DIR"), "/../ClickDown.Angular/dist/clickdown-angular/browser");
@@ -47,6 +48,8 @@ struct AppState {
     animations: bool,
     /// From config.toml; empty means everything the token can see.
     only_lists: Vec<String>,
+    /// From config.toml: Host header values answered besides 127.0.0.1:4280 and localhost:4280.
+    allowed_hosts: Vec<String>,
 }
 
 type Shared = State<Arc<AppState>>;
@@ -76,8 +79,9 @@ fn main() -> ExitCode {
         env!("ANGULAR_VERSION"),
     );
     info!(
-        "config loaded from {CONFIG_PATH}: log_level={}, animations={}, only_lists={:?}, token={}",
-        config.log_level, config.animations, config.only_lists, config.token
+        "config loaded from {CONFIG_PATH}: log_level={}, animations={}, only_lists={:?}, \
+         allowed_hosts={:?}, token={}",
+        config.log_level, config.animations, config.only_lists, config.allowed_hosts, config.token
     );
     // A current-thread runtime never reads TOKIO_WORKER_THREADS, and an explicit stack size
     // stops std from reading RUST_MIN_STACK for the blocking-pool threads.
@@ -118,6 +122,12 @@ async fn run(config: Config) -> ExitCode {
     if !config.only_lists.is_empty() {
         println!("Showing only these lists (only_lists): {}", config.only_lists.join(", "));
     }
+    if !config.allowed_hosts.is_empty() {
+        println!(
+            "Also answering {} (allowed_hosts). ClickDown has no login: keep one in front of them.",
+            config.allowed_hosts.join(", ")
+        );
+    }
     if !std::path::Path::new(DIST_DIR).join("index.html").exists() {
         let ui_dir =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).with_file_name("ClickDown.Angular");
@@ -130,6 +140,7 @@ async fn run(config: Config) -> ExitCode {
         clickup,
         animations: config.animations,
         only_lists: config.only_lists,
+        allowed_hosts: config.allowed_hosts,
     });
     let ctrl_c = async {
         tokio::signal::ctrl_c().await.ok();
@@ -165,11 +176,11 @@ fn app(state: Arc<AppState>) -> Router {
     let api = api
         .fallback(|| async { json_error(StatusCode::NOT_FOUND, "not_found") })
         .layer(middleware::from_fn_with_state(state.clone(), rate_headers))
-        .with_state(state);
+        .with_state(state.clone());
     Router::new()
         .nest("/api", api)
         .fallback_service(ServeDir::new(DIST_DIR))
-        .layer(middleware::from_fn(guard)) // added last, so it wraps everything
+        .layer(middleware::from_fn_with_state(state, guard)) // added last, so it wraps everything
 }
 
 async fn settings(State(s): Shared) -> Json<Value> {
@@ -340,11 +351,15 @@ async fn rate_headers(State(s): Shared, req: Request, next: Next) -> Response {
     response
 }
 
-/// Runs before every route. The Host check blocks DNS rebinding; /api paths may only use
+/// Runs before every route. The Host check blocks DNS rebinding: only 127.0.0.1:4280,
+/// localhost:4280 and config's allowed_hosts are answered. /api paths may only use
 /// [A-Za-z0-9/_-] (the query is not checked).
-async fn guard(req: Request, next: Next) -> Response {
-    let host = req.headers().get(HOST).and_then(|host| host.to_str().ok());
-    if !matches!(host, Some("127.0.0.1:4280" | "localhost:4280")) {
+async fn guard(State(s): Shared, req: Request, next: Next) -> Response {
+    let host = req.headers().get(HOST).and_then(|host| host.to_str().ok()).unwrap_or_default();
+    if !matches!(host, "127.0.0.1:4280" | "localhost:4280")
+        && !s.allowed_hosts.iter().any(|allowed| allowed.eq_ignore_ascii_case(host))
+    {
+        warn!("refused a request for host {host:?}, which isn't in allowed_hosts in config.toml");
         return json_error(StatusCode::FORBIDDEN, "forbidden");
     }
     let path = req.uri().path();
@@ -457,9 +472,10 @@ mod tests {
     /// Runs the real router on a spare local port. Everything asserted here is answered
     /// before any ClickUp call, and in tests api.rs points at a closed local port anyway.
     #[test]
-    fn only_lists_is_enforced_by_the_server() {
+    fn only_lists_and_hosts_are_enforced_by_the_server() {
         let text = "clickup_token = \"pk_test_000000000000\"\nlog_level = \"off\"\n\
-                    log_file = \"x.log\"\nanimations = true\nonly_lists = [\"901\"]\n";
+                    log_file = \"x.log\"\nanimations = true\nonly_lists = [\"901\"]\n\
+                    allowed_hosts = [\"ClickDown.example\"]\n";
         let config = config::parse(text, std::path::Path::new(CONFIG_PATH)).unwrap();
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
@@ -468,21 +484,39 @@ mod tests {
             let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build();
             runtime.unwrap().block_on(async {
                 let clickup = ClickUp::new(&config.token).unwrap();
-                let state = AppState { clickup, animations: true, only_lists: config.only_lists };
+                let state = AppState {
+                    clickup,
+                    animations: true,
+                    only_lists: config.only_lists,
+                    allowed_hosts: config.allowed_hosts,
+                };
                 let listener = tokio::net::TcpListener::from_std(listener).unwrap();
                 axum::serve(listener, app(Arc::new(state))).await.unwrap();
             });
         });
-        let get = |path: &str| {
+        let get_as = |host: &str, path: &str| {
             let mut stream = std::net::TcpStream::connect(addr).unwrap();
             let request =
-                format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1:4280\r\nConnection: close\r\n\r\n");
+                format!("GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n");
             stream.write_all(request.as_bytes()).unwrap();
             let mut response = String::new();
             stream.read_to_string(&mut response).unwrap();
             response
         };
+        let get = |path: &str| get_as("127.0.0.1:4280", path);
         assert!(get("/api/settings").contains(r#""only_lists":["901"]"#));
+        for host in ["localhost:4280", "clickdown.example", "ClickDown.Example"] {
+            assert!(get_as(host, "/api/settings").starts_with("HTTP/1.1 200"), "{host}");
+        }
+        // Every other name is refused, the UI included, even a subdomain or another port of an
+        // allowed one.
+        for host in ["evil.clickdown.example", "clickdown.example:4280", "127.0.0.1", "localhost"] {
+            for path in ["/", "/api/settings"] {
+                let refused = get_as(host, path);
+                assert!(refused.starts_with("HTTP/1.1 403"), "{host}{path} {refused}");
+                assert!(refused.contains(r#""error":"forbidden""#), "{host}{path} {refused}");
+            }
+        }
         for browsing in [
             "/api/team",
             "/api/team/1/space",
