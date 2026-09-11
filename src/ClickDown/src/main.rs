@@ -1,5 +1,5 @@
 //! ClickDown, a read-only ClickUp browser: loads the config, starts logging, then serves the
-//! Angular UI and a GET-only JSON API on 127.0.0.1:4280.
+//! Angular UI and a GET-only JSON API on 127.0.0.1:4280 (0.0.0.0:4280 in the container image).
 mod api;
 mod config;
 
@@ -30,7 +30,14 @@ use api::{
 };
 use config::{CONFIG_PATH, Config};
 
+#[cfg(not(feature = "container"))]
 const ADDR: &str = "127.0.0.1:4280";
+/// Docker forwards a published port to the container's network interface, not its loopback.
+/// `docker run -p 127.0.0.1:4280:4280` keeps it on the host's loopback (README.md).
+#[cfg(feature = "container")]
+const ADDR: &str = "0.0.0.0:4280";
+/// What the browser opens, in the container too: the Host guard only lets this (or localhost) in.
+const URL: &str = "http://127.0.0.1:4280";
 const DIST_DIR: &str =
     concat!(env!("CARGO_MANIFEST_DIR"), "/../ClickDown.Angular/dist/clickdown-angular/browser");
 const NOT_ARCHIVED: &[(&str, &str)] = &[("archived", "false")];
@@ -117,7 +124,7 @@ async fn run(config: Config) -> ExitCode {
         warn!("UI not built: {DIST_DIR}/index.html is missing");
         println!("UI not built: run npm run build in {}", ui_dir.display());
     }
-    println!("ClickDown running at http://{ADDR} (Ctrl+C to stop)");
+    println!("ClickDown running at {URL} (Ctrl+C to stop)");
     info!("listening on http://{ADDR}");
     let state = Arc::new(AppState {
         clickup,

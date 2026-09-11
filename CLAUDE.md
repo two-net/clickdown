@@ -17,8 +17,10 @@ in the browser talks only to that backend at http://127.0.0.1:4280 and never see
 - `Dockerfile`, `.github/workflows/package.yml`: the container image for amd64 and arm64, pushed to ghcr.io by
   GitHub Actions. The workflow compiles the binary and builds the UI in /opt/clickdown (their paths are fixed
   at compile time, and the image runs them from there); the Dockerfile only copies those two in. No source
-  code, and no `config.toml`, ever reaches Docker. The same rules hold: 127.0.0.1 only (run with
-  `--network host`), and `config.toml` is mounted at run time.
+  code, and no `config.toml`, ever reaches Docker. The same rules hold, but one: built with the `container`
+  feature, the binary listens on 0.0.0.0:4280 inside its container, and runs with `-p 127.0.0.1:4280:4280`
+  (never `--network host`, a bare `-p 4280:4280`, or an `EXPOSE`; on Linux that needs Docker Engine 28.0+).
+  `config.toml` is mounted at run time.
 
 ## Non-negotiable rules
 
@@ -44,7 +46,7 @@ in the browser talks only to that backend at http://127.0.0.1:4280 and never see
    All CSS in `styles.css`. Animations are native (CSS plus `animate.enter`/`animate.leave`, not
    `@angular/animations`) and obey the `animations` config switch.
 
-Also keep: binding to 127.0.0.1 only, the Host-header guard, the `/api` path character check, descriptions
+Also keep: binding to 127.0.0.1 only (0.0.0.0 only in the `container` build), the Host-header guard, the `/api` path character check, descriptions
 rendering raw HTML as text and images as links, and `only_lists` enforced by the backend (browsing routes not
 registered; lists, tasks and comments outside it refused), never just hidden in the UI. Tests use fixtures, never the real ClickUp API (under `cfg(test)`,
 `api.rs`'s `BASE_URL` is a closed local port). Never commit

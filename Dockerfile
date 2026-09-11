@@ -1,7 +1,10 @@
 # ClickDown's container image. No source code goes in, or even reaches Docker: the build context is
 # just the compiled binary and the built UI, which .github/workflows/package.yml builds beforehand.
-# The binary listens on 127.0.0.1:4280 only, so run the image with --network host and mount
-# config.toml read-only; README.md, "Container image", has the command.
+# The binary is built with the container feature and listens on 0.0.0.0:4280 inside the container,
+# so publish the port on the host's loopback only (-p 127.0.0.1:4280:4280, never --network host;
+# on Linux, only Docker Engine 28.0+ keeps that off the network) and mount config.toml read-only;
+# README.md, "Container image", has the command. There is no EXPOSE on purpose: with it,
+# docker run -P would publish the port on every host interface.
 FROM debian:trixie-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \

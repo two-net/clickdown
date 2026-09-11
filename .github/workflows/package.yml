@@ -79,13 +79,14 @@ jobs:
           rustup default 1.97
           command -v cmake >/dev/null || { sudo apt-get update && sudo apt-get install -y cmake; }
       # config.rs and main.rs fix config.toml's and the UI's paths at compile time, relative to the
-      # crate's folder, so it's built in the folder the image runs it from.
+      # crate's folder, so it's built in the folder the image runs it from. The container feature
+      # makes it listen on 0.0.0.0:4280, so Docker can forward the published port into it.
       - name: Build in /opt/clickdown
         run: |
           sudo mkdir -p /opt/clickdown && sudo chown "$USER" /opt/clickdown
           cp -R src/ClickDown src/ClickDown.Angular /opt/clickdown/
           (cd /opt/clickdown/ClickDown.Angular && npm ci && npm run build)
-          (cd /opt/clickdown/ClickDown && cargo build --release --locked)
+          (cd /opt/clickdown/ClickDown && cargo build --release --locked --features container)
       - name: Keep only the binary and the built UI
         run: |
           mkdir -p "$RUNNER_TEMP/image"

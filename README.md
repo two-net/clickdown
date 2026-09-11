@@ -14,7 +14,8 @@ ClickDown has two halves:
 - an **Angular UI** (`src/ClickDown.Angular`) that runs in your browser at http://127.0.0.1:4280 and only talks
   to the backend. It never sees the token.
 
-The backend listens on 127.0.0.1 only, so nothing outside your machine can reach it.
+The backend listens on 127.0.0.1 only, so nothing outside your machine can reach it. (The container image is
+published on the host's 127.0.0.1 instead; see [Container image](#container-image).)
 
 ## 1. Get a personal ClickUp token
 
@@ -154,20 +155,26 @@ package settings, or run `docker login ghcr.io` before pulling.
 
 No source code goes into the image, or even reaches Docker: the workflow compiles the binary and builds the
 UI first, and the image is made from just those two. They are the same as a local build, so the same rules
-apply. It listens on 127.0.0.1 only, and it
-reads its settings only from `config.toml`, which you mount; the image never contains it. Run it on the
-host's network:
+apply, but one: the binary is built with the `container` feature and listens on 0.0.0.0:4280 inside its
+container, because Docker forwards a published port to the container's network interface, not to its
+loopback. It reads its settings only from `config.toml`, which you mount; the image never contains it.
+Publish the port on the host's 127.0.0.1 only:
 
 ```sh
-docker run --rm --network host \
+docker run --rm -p 127.0.0.1:4280:4280 \
   -v "$PWD/src/ClickDown/config.toml:/opt/clickdown/ClickDown/config.toml:ro" \
   -v clickdown-logs:/opt/clickdown/ClickDown/logs \
   ghcr.io/<owner>/<repo>:latest
 ```
 
-Then open http://127.0.0.1:4280. Keep `log_file` relative, like the example's `logs/clickdown.log`; the log
-then lands in the `clickdown-logs` volume. `--network host` works as-is on Linux; Docker Desktop (macOS,
-Windows) needs host networking switched on in its settings. Stop it with Ctrl+C or `docker stop`.
+Then open http://127.0.0.1:4280. Keep the `127.0.0.1:` in `-p`: a bare `-p 4280:4280`, or `--network host`,
+would offer ClickDown, and with it everything your token can read, to your whole network. Keep the host port
+4280 too, since ClickDown only answers requests addressed to 127.0.0.1:4280 or localhost:4280. Keep `log_file`
+relative, like the example's `logs/clickdown.log`; the log then lands in the `clickdown-logs` volume. Stop it with
+Ctrl+C or `docker stop`.
+
+On Linux, use Docker Engine 28.0 or newer (or rootless Docker): older engines let other machines on your network
+reach a container's published port, even one published on 127.0.0.1. Docker Desktop (macOS, Windows) is fine.
 
 ## Troubleshooting
 
