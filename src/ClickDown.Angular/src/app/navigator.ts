@@ -1,6 +1,6 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, Signal, computed, inject, linkedSignal, signal } from '@angular/core';
 import { Backend, LoadError } from './backend';
-import { cap, plural } from './format';
+import { cap, matches, plural } from './format';
 import { Comment, CommentsPage, Folder, List, SharedHierarchy, Space, Status, Task, TaskDetail, TasksPage, Team } from './models';
 
 export type Kind = 'lists' | 'workspaces' | 'spaces' | 'space' | 'folder' | 'list' | 'task';
@@ -23,23 +23,71 @@ export interface Level {
   target: number; clickable: boolean; step: number; color: string; nextColor: string;
 }
 
+const NO_DUE = Number.MAX_VALUE; // after every real due date; two of them tie, as MAX - MAX is 0
+const PRIORITY = new Map([['urgent', 0], ['high', 1], ['normal', 2], ['low', 3]]); // no priority: 4, last
+const rank = (t: Task) => PRIORITY.get(t.priority?.priority ?? '') ?? 4;
+const byName = new Intl.Collator('en-US', { numeric: true, sensitivity: 'base' }); // "Task 9" before "Task 10"
+
+/** How a list's tasks can be ordered within each status, one natural direction each; S picks the next. Ties keep ClickUp's order. */
+export const SORTS: { name: string; says: string; compare?: (a: Task, b: Task) => number }[] = [
+  { name: 'ClickUp’s order', says: 'in ClickUp’s order' },
+  { name: 'Due date', says: 'by due date, soonest first', compare: (a, b) => (a.due_date || NO_DUE) - (b.due_date || NO_DUE) },
+  { name: 'Priority', says: 'by priority, urgent first', compare: (a, b) => rank(a) - rank(b) },
+  { name: 'Name', says: 'by name, A to Z', compare: (a, b) => byName.compare(a.name, b.name) },
+];
+
+/** What a search looks through: a task's name, the ID its row shows, its tags and assignees; any other row's name. */
+const searched = ({ name, task: t }: Item): (string | null)[] =>
+  t ? [name, t.custom_id || t.id, ...t.tags.map((tag) => tag.name), ...t.assignees.map((a) => a.username)] : [name];
+
 let lastKey = 0;
 
 /** One level of the descent. It keeps its own data, so going back is instant. */
 export class Frame {
   readonly key = ++lastKey; // unique per push, so re-opening the same item still animates
-  readonly groups = signal<Group[]>([]);
+  readonly all = signal<Group[]>([]); // every row loaded, before the search and the sort
+  readonly query = signal(''); // the search box's text
+  /** What's on screen: the rows that match the search, a list's tasks sorted within each status. "Load more" stays: the next page may match. */
+  readonly groups = computed(() => {
+    const query = this.query().trim();
+    const compare = this.kind === 'list' ? SORTS[this.sort()].compare : undefined;
+    if (!query && !compare) return this.all();
+    return this.all()
+      .map((g) => {
+        const items = g.items.filter((i) => i.open === 'more' || matches(query, searched(i)));
+        return { ...g, items: compare && g.status ? items.sort((a, b) => compare(a.task!, b.task!)) : items };
+      })
+      .filter((g) => g.items.length);
+  });
   readonly items = computed(() => this.groups().flatMap((g) => g.items)); // what ↑/↓ move through
   readonly ready = signal(false); // data arrived at least once
   readonly busy = signal<'Refreshing' | 'Loading more' | null>(null);
   readonly error = signal<LoadError | null>(null); // once ready, a failed refresh: the rows stay
-  readonly highlight = signal(0);
+  /** The selected row. When the rows change (a refresh, a page, a search, a sort), it stays on its row, or in its place if that row went. */
+  readonly highlight = linkedSignal<Item[], number>({
+    source: this.items,
+    computation: (items, prev) => {
+      const was = prev?.source[prev.value];
+      const at = was ? items.findIndex((i) => i.open === was.open && i.id === was.id) : -1;
+      return at >= 0 ? at : Math.max(0, Math.min(prev?.value ?? 0, items.length - 1));
+    },
+  });
+  /** The selected row's element id, for aria-activedescendant on the rows and the search box. */
+  readonly active = computed(() => {
+    const item = this.items()[this.highlight()];
+    return item ? this.optionId(item) : null;
+  });
   readonly task = signal<TaskDetail | null>(null);
   readonly comments = signal<Comment[] | null>(null); // newest first, as ClickUp pages them; null while loading
   readonly commentsError = signal<LoadError | null>(null);
   readonly olderComments = signal(false);
   readonly olderBusy = signal(false); // loading the page of older comments
-  readonly summary = computed(() => this.summarize());
+  readonly summary = computed(() => {
+    const all = this.summarize();
+    if (!this.query().trim() || !this.all().length) return all;
+    const found = this.items().filter((i) => i.open !== 'more').length;
+    return `${found ? plural(found, 'match', 'matches') : 'No matches'} among ${all}`;
+  });
   tasks: Task[] = []; // a list's tasks, every page so far
   page = 0;
   lastPage = true;
@@ -47,7 +95,20 @@ export class Frame {
   generation = 0; // bumped by every load, so answers to an older load are dropped
   commentsGeneration = 0;
 
-  constructor(readonly kind: Kind, readonly id: string, readonly title: string, readonly shared = false) {}
+  constructor(readonly kind: Kind, readonly id: string, readonly title: string, readonly shared: boolean,
+              readonly sort: Signal<number>) {} // the Navigator's, an index into SORTS
+
+  /** The search box's text. Typing selects the first match; emptying the box keeps the row you're on, if any matched. */
+  search(query: string) {
+    const none = this.items().every((i) => i.open === 'more');
+    this.query.set(query);
+    if (query.trim() || none) this.highlight.set(0);
+  }
+
+  /** A row's element id, by the row rather than its place, so a screen reader hears a new match at the same place. */
+  optionId(item: Item): string {
+    return `v${this.key}-${item.open}-${item.id}`;
+  }
 
   move(by: number) {
     if (!this.ready()) return;
@@ -55,7 +116,7 @@ export class Frame {
   }
 
   private summarize(): string {
-    const rows = this.items().filter((i) => i.open !== 'more');
+    const rows = this.all().flatMap((g) => g.items).filter((i) => i.open !== 'more'); // everything loaded, searched or not
     const count = (open: Kind) => rows.filter((i) => i.open === open).length;
     switch (this.kind) {
       case 'workspaces':
@@ -132,6 +193,8 @@ export class Navigator {
   readonly top = computed(() => this.stack().slice(-1));
   /** Whether the last move went back; picks the slide direction. */
   readonly back = signal(false);
+  /** How lists order their tasks, an index into SORTS: one choice for the visit, so the next list opens the same way. */
+  readonly sort = signal(0);
   readonly toast = signal({ text: '', shown: false });
   private toastTimer?: ReturnType<typeof setTimeout>;
   private depthMove = { from: -1, to: -1 }; // the latest change of depth, which the rail animates
@@ -191,7 +254,7 @@ export class Navigator {
   }
 
   push(kind: Kind, id: string, title: string, shared = false) {
-    const frame = new Frame(kind, id, title, shared);
+    const frame = new Frame(kind, id, title, shared, this.sort);
     this.back.set(false);
     this.stack.update((s) => [...s, frame]);
     void this.load(frame);
@@ -221,10 +284,17 @@ export class Navigator {
     this.activate(frame);
   }
 
+  /** S, and the Sort button: every list's tasks in the next order. Only the pages loaded are sorted, so it says so. */
+  sortNext(frame: Frame) {
+    const sort = (this.sort() + 1) % SORTS.length;
+    this.sort.set(sort);
+    const loaded = frame.lastPage || !SORTS[sort].compare ? '' : `, among the ${plural(frame.tasks.length, 'task')} loaded so far`;
+    this.say(`Sorted ${SORTS[sort].says}${loaded}.`);
+  }
+
   /** The first load, or a refresh: a ready frame keeps showing its rows until the answer arrives. */
   async load(frame: Frame) {
     const generation = ++frame.generation;
-    const keep = frame.items()[frame.highlight()]?.id;
     if (frame.ready()) frame.busy.set('Refreshing');
     else frame.error.set(null);
     if (frame.kind === 'task') void this.loadComments(frame);
@@ -233,9 +303,7 @@ export class Navigator {
       if (generation !== frame.generation) return;
       apply();
       frame.ready.set(true);
-      frame.error.set(null);
-      const kept = frame.items().findIndex((i) => i.id === keep);
-      frame.highlight.set(kept >= 0 ? kept : Math.max(0, Math.min(frame.highlight(), frame.items().length - 1)));
+      frame.error.set(null); // the highlight stays on its row by itself
     } catch (e) {
       if (generation === frame.generation) frame.error.set(e as LoadError);
     } finally {
@@ -257,11 +325,13 @@ export class Navigator {
       frame.tasks = [...frame.tasks, ...fresh];
       frame.page = page;
       frame.lastPage = last_page;
-      frame.groups.set(byStatus(frame.tasks, last_page));
-      const first = frame.items().findIndex((i) => i.id === fresh[0]?.id);
-      frame.highlight.set(first >= 0 ? first : Math.min(frame.highlight(), frame.items().length - 1));
+      frame.all.set(byStatus(frame.tasks, last_page));
+      const ids = new Set(fresh.map((t) => t.id));
+      const shown = frame.items().filter((i) => ids.has(i.id)); // in screen order: searched and sorted
+      if (shown[0]) frame.highlight.set(frame.items().indexOf(shown[0])); // none shown: the selection stays where it is
+      const matching = frame.query().trim() ? `, ${shown.length || 'none'} matching the search` : '';
       if (this.stack().includes(frame)) {
-        this.say(`Loaded ${plural(fresh.length, 'more task')}${last_page ? '. That’s all of them.' : '.'}`);
+        this.say(`Loaded ${plural(fresh.length, 'more task')}${matching}${last_page ? '. That’s all of them.' : '.'}`);
       }
     } catch (e) {
       if (generation === frame.generation && this.stack().includes(frame)) {
@@ -322,11 +392,11 @@ export class Navigator {
   /** Reads what the frame shows and returns how to put it in place. */
   private async retrieve(f: Frame): Promise<() => void> {
     const api = <T>(path: string) => this.backend.get<T>(`/api/${path}`);
-    const show = (groups: Group[]) => () => f.groups.set(groups);
+    const show = (groups: Group[]) => () => f.all.set(groups);
     switch (f.kind) {
       case 'lists': { // only_lists in config.toml: just those lists
         // A bad id (a typo, a deleted list) doesn't hide the others; its row opens to show why.
-        const ids = this.backend.settings().only_lists;
+        const ids = [...new Set(this.backend.settings().only_lists)]; // each once: a row's id is its element's
         const lists = await Promise.allSettled(ids.map((id) => api<List>(`list/${id}`)));
         const failed = lists.filter((l) => l.status === 'rejected');
         if (failed.length === ids.length && failed[0]) throw failed[0].reason; // e.g. the server is down
@@ -367,14 +437,14 @@ export class Navigator {
           f.tasks = tasks;
           f.page = 0;
           f.lastPage = last_page;
-          f.groups.set(byStatus(tasks, last_page));
+          f.all.set(byStatus(tasks, last_page));
         };
       }
       case 'task': {
         const task = await api<TaskDetail>(`task/${f.id}`);
         return () => {
           f.task.set(task);
-          f.groups.set(one(task.subtasks.map(taskRow)));
+          f.all.set(one(task.subtasks.map(taskRow)));
         };
       }
     }

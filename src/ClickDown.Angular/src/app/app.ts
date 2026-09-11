@@ -2,11 +2,13 @@ import { Component, ElementRef, afterRenderEffect, computed, effect, inject, sig
 import { Backend, LoadError } from './backend';
 import { cap, color } from './format';
 import { ItemList } from './item-list';
-import { Frame, Navigator, describe } from './navigator';
+import { Frame, Navigator, SORTS, describe } from './navigator';
 import { TaskDetail } from './task-detail';
 
 /** The selection's color at each depth: the deeper, the darker. */
 const SELECTION = ['var(--d2)', 'var(--d2)', 'var(--d3)', 'var(--d3)', 'var(--d4)'];
+/** The keys the search box passes on to the rows; every other key types, or moves in the text. */
+const BOX_KEYS = ['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Enter', 'Escape'];
 
 @Component({
   selector: 'app-root',
@@ -21,6 +23,8 @@ export class App {
   protected readonly color = color;
   protected readonly describe = describe;
   protected readonly letters = [...'ClickDown'];
+  protected readonly sorts = SORTS;
+  protected readonly heard = signal(''); // a search's result, for screen readers
   protected readonly splash = signal(this.backend.motion());
   private tokenChecked = false; // /api/user answered, so ClickUp accepts the token
   private readonly tokenError = signal<LoadError | null>(null);
@@ -49,6 +53,19 @@ export class App {
     effect(() => {
       if (this.fatal()) document.title = 'ClickDown stopped';
     });
+    // A search's result, for screen readers, once typing pauses: the toast would flash on every key.
+    effect((onCleanup) => {
+      const frame = this.nav.top()[0];
+      const text = frame?.query().trim() ? frame.summary() : '';
+      this.heard.set(''); // emptied first, so a count that didn't change is heard again
+      const timer = setTimeout(() => this.heard.set(text), 600);
+      onCleanup(() => clearTimeout(timer));
+    });
+    afterRenderEffect(() => {
+      this.nav.rail(); // only when you move: the narrow rail scrolls sideways, to where you are
+      const rail = this.railEl()?.nativeElement;
+      if (rail) rail.scrollLeft = rail.scrollWidth;
+    });
     afterRenderEffect(() => this.present());
   }
 
@@ -69,6 +86,10 @@ export class App {
     }
     if (this.fatal() && event.key.toLowerCase() !== 'r') return;
     const target = event.target instanceof Element ? event.target : null;
+    // The search box keeps the keys that edit its text, and every key while an IME composes (keyCode 229:
+    // Safari's Enter that ends a composition).
+    const typing = target instanceof HTMLInputElement;
+    if (typing && (event.isComposing || event.keyCode === 229 || !BOX_KEYS.includes(event.key))) return;
     if ((event.key === 'Enter' || event.key === ' ') && target?.closest('button, a')) return; // their own action
     const frame = this.nav.top()[0];
     if (!frame) return;
@@ -82,8 +103,17 @@ export class App {
       case 'Home': this.move(frame, -Infinity, scroll); break;
       case 'End': this.move(frame, Infinity, scroll); break;
       case 'Enter': case 'ArrowRight': if (!scroll) this.nav.activate(frame); break;
-      case 'Escape': case 'Backspace': case 'ArrowLeft': this.nav.pop(); break;
-      // A held key repeats ~30 times a second; each refresh would cost ClickUp requests.
+      // One step out at a time, so a held key doesn't run through them: the search's text, the search box, the level.
+      case 'Escape':
+        if (event.repeat) break;
+        if (frame.query()) frame.search('');
+        else if (typing) this.focusIn(frame, '.rows');
+        else this.nav.pop();
+        break;
+      case 'Backspace': case 'ArrowLeft': this.nav.pop(); break;
+      case '/': if (!this.focusIn(frame, '.find')) return; break; // none in a task: the browser keeps its own /
+      // A held key repeats ~30 times a second: each sort would say so, and each refresh would cost ClickUp requests.
+      case 's': case 'S': if (frame.kind !== 'list' || !frame.ready() || event.repeat) return; this.nav.sortNext(frame); break;
       case 'r': case 'R': if (!event.repeat) void this.refresh(frame); break;
       case '?': this.openHelp(); break;
       default: return;
@@ -97,7 +127,9 @@ export class App {
   }
 
   protected openHelp() {
-    this.help()?.nativeElement.showModal?.();
+    const help = this.help()?.nativeElement;
+    help?.showModal?.();
+    if (help) help.scrollTop = 0; // a closed dialog keeps its scroll, so it would reopen below its top
   }
 
   protected closeHelp() {
@@ -152,12 +184,10 @@ export class App {
 
   /** After each render: set up a view that just appeared, and put focus on its rows once they exist. */
   private present() {
-    this.nav.rail();
-    const rail = this.railEl()?.nativeElement;
-    if (rail) rail.scrollLeft = rail.scrollWidth; // the narrow rail scrolls sideways
     const frame = this.nav.top()[0];
     if (!frame || this.fatal()) return;
     const ready = frame.ready() || !!frame.error();
+    frame.items(); // rows come and go with a search, a page or a refresh, and focus goes with them
     const view = document.querySelector<HTMLElement>(`.view[data-key="${frame.key}"]`);
     const body = view?.querySelector<HTMLElement>('.view-body');
     if (!view || !body) return;
@@ -177,9 +207,21 @@ export class App {
     }
   }
 
+  /** "/" and Esc: focus on this view's search box (its text selected, so typing starts afresh) or its rows. False if there's none. */
+  private focusIn(frame: Frame, selector: '.find' | '.rows'): boolean {
+    const el = document.querySelector<HTMLElement>(`.view[data-key="${frame.key}"] ${selector}`);
+    el?.focus({ preventScroll: true });
+    if (el instanceof HTMLInputElement) el.select();
+    return !!el;
+  }
+
   /** In a task, the movement keys scroll it; everywhere else they move the selection. */
   private move(frame: Frame, by: number, scroll: boolean) {
-    if (!scroll) return frame.move(by);
+    if (!scroll) {
+      // From a button (Sort, the rail), focus goes to the rows, where the selection is shown and announced.
+      if (!document.activeElement?.closest('.find, .rows')) this.focusIn(frame, '.rows');
+      return frame.move(by);
+    }
     const body = document.querySelector<HTMLElement>(`.view[data-key="${frame.key}"] .view-body`);
     if (!body) return;
     const behavior = this.backend.motion() ? 'smooth' : 'auto';

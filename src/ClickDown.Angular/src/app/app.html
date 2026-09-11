@@ -63,7 +63,7 @@
                    animate.enter="view-enter" animate.leave="view-leave">
             <header class="view-head">
               <h1 [id]="'v' + f.key + '-title'">{{ f.task()?.name ?? f.title }}</h1>
-              <p class="view-sub">
+              <p class="view-sub" [id]="'v' + f.key + '-sub'">
                 @if (f.task(); as t) {
                   <span class="sub-text">
                     <span class="pill" [style.--s]="color(t.status.color)"><span class="sdot" aria-hidden="true"></span>{{ cap(t.status.status) }}</span>
@@ -77,6 +77,19 @@
                   <span class="busy"><span class="spin" aria-hidden="true"></span>{{ busy }}</span>
                 }
               </p>
+              @if (f.kind !== 'task' && f.ready() && (f.all().length || f.query())) {
+                <div class="tools">
+                  <input #box class="find" type="search" role="combobox" aria-autocomplete="list" aria-keyshortcuts="/"
+                         autocomplete="off" autocapitalize="off" spellcheck="false"
+                         [placeholder]="f.kind === 'list' ? 'Search by name, ID, tag or person' : 'Search by name'"
+                         [attr.aria-label]="'Search ' + f.title" [attr.aria-describedby]="'v' + f.key + '-sub'"
+                         [attr.aria-expanded]="f.items().length > 0" [attr.aria-controls]="f.items().length ? 'v' + f.key + '-rows' : null"
+                         [attr.aria-activedescendant]="f.active()" [value]="f.query()" (input)="f.search(box.value)">
+                  @if (f.kind === 'list') {
+                    <button class="btn" type="button" aria-keyshortcuts="S" title="Change the order (S)" (click)="nav.sortNext(f)">Sort: {{ sorts[nav.sort()].name }}</button>
+                  }
+                </div>
+              }
             </header>
             @if (backend.retryIn()) {
               <div class="banner" role="status">ClickUp’s rate limit is reached. ClickDown retries in {{ backend.retryIn() }} s.</div>
@@ -106,6 +119,7 @@
         <span class="hint keep"><kbd>↑</kbd><kbd>↓</kbd> Move</span>
         <span class="hint keep"><kbd>Enter</kbd> Open</span>
         <span class="hint"><kbd>Esc</kbd> Back</span>
+        <span class="hint opt"><kbd>/</kbd> Search</span>
         <span class="hint opt"><kbd>R</kbd> Refresh</span>
         <button class="hint hint-btn" type="button" (click)="openHelp()"><kbd>?</kbd> Keys</button>
       </div>
@@ -132,13 +146,16 @@
 
   <dialog class="help" #help aria-labelledby="help-title" (click)="onHelpClick($event)">
     <div class="help-inner">
-      <h2 id="help-title">Keyboard shortcuts</h2>
+      <h2 id="help-title" tabindex="-1" autofocus>Keyboard shortcuts</h2>
       <table class="keys">
         <tr><td><kbd>↑</kbd><kbd>↓</kbd> or <kbd>J</kbd><kbd>K</kbd></td><td>Move the selection, or scroll a task</td></tr>
         <tr><td><kbd>Enter</kbd> or <kbd>→</kbd></td><td>Open the selected item</td></tr>
-        <tr><td><kbd>Esc</kbd>, <kbd>Backspace</kbd> or <kbd>←</kbd></td><td>Go up one level</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>Clear the search, leave the search box, or go up one level</td></tr>
+        <tr><td><kbd>Backspace</kbd> or <kbd>←</kbd></td><td>Go up one level</td></tr>
         <tr><td><kbd>Home</kbd> <kbd>End</kbd></td><td>First or last item</td></tr>
         <tr><td><kbd>Page Up</kbd> <kbd>Page Down</kbd></td><td>Move ten items, or scroll a task</td></tr>
+        <tr><td><kbd>/</kbd></td><td>Search this screen; <kbd>↑</kbd><kbd>↓</kbd> and <kbd>Enter</kbd> still work</td></tr>
+        <tr><td><kbd>S</kbd></td><td>In a list, sort the tasks another way</td></tr>
         <tr><td><kbd>Tab</kbd></td><td>In a task, reach its subtasks</td></tr>
         <tr><td><kbd>R</kbd></td><td>Refresh this screen</td></tr>
         <tr><td><kbd>?</kbd></td><td>Show or hide this list</td></tr>
@@ -150,3 +167,4 @@
 }
 
 <div class="toast" [class.show]="nav.toast().shown" role="status" aria-live="polite">{{ nav.toast().text }}</div>
+<div class="sr-only" role="status">{{ heard() }}</div>

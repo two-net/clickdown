@@ -94,6 +94,14 @@ code,kbd,pre{font-family:var(--mono)}
 .banner.error{background:var(--err-bg);color:var(--err-ink)}
 .view-body{flex:1;overflow:auto;padding:4px 20px 80px;outline:none}
 
+/* Search and sort, under the title of every view but a task's */
+.tools{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-top:12px}
+.find{flex:0 1 360px;min-width:0;padding:6px 12px;border:1px solid color-mix(in srgb,var(--slate) 80%,var(--paper));border-radius:8px;background:var(--paper);font:inherit;color:var(--ink);appearance:none}
+.find::placeholder{color:var(--faint)}
+.find:hover{border-color:var(--d3)}
+/* In the search box, ↑ ↓ and Enter work on the selected row, so it's marked as when the rows have focus. */
+.view:has(.find:focus) .row[aria-selected="true"]{box-shadow:inset 0 0 0 2px var(--d4)}
+
 /* Rows */
 .rows{max-width:980px;outline:none;container-type:inline-size}
 .group-head{display:flex;align-items:center;gap:8px;padding:18px 12px 6px;font-size:14px;font-weight:620;color:var(--slate)}
@@ -164,7 +172,7 @@ code,kbd,pre{font-family:var(--mono)}
 @keyframes shimmer{from{background-position:100% 0}to{background-position:0 0}}
 .state{max-width:560px;padding:28px 12px}
 .state h2{margin:0 0 6px;font-size:18px;line-height:1.3}
-.state p{margin:0 0 16px;color:var(--slate)}
+.state p{margin:0 0 16px;color:var(--slate);overflow-wrap:anywhere}
 .state.error h2{color:var(--err-ink)}
 .state-key{margin-left:10px;font-size:14px;color:var(--slate)}
 .btn{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:8px;border:1px solid var(--rule);background:var(--paper);font-size:14px;font-weight:620}
@@ -273,7 +281,8 @@ kbd{display:inline-block;min-width:20px;padding:0 5px;border:1px solid var(--rul
 .help{width:min(540px,calc(100vw - 32px));max-width:none;padding:0;border:0;border-radius:12px;color:var(--ink);background:var(--shallows);box-shadow:0 24px 60px rgb(20 59 85 / .32)}
 .help::backdrop{background:rgb(20 59 85 / .38)}
 .help-inner{padding:24px 28px 22px}
-.help h2{margin:0 0 12px;font-size:21px}
+/* The title takes focus when the dialog opens (autofocus), so a short screen shows it from its top; it's outside the Tab order. */
+.help h2{margin:0 0 12px;font-size:21px;outline:none}
 .keys{width:100%;border-collapse:collapse;font-size:15px}
 .keys td{padding:8px 0;border-top:1px solid var(--rule);vertical-align:top}
 .keys td:first-child{width:46%;padding-right:14px;white-space:nowrap}
@@ -310,6 +319,7 @@ kbd{display:inline-block;min-width:20px;padding:0 5px;border:1px solid var(--rul
   .readonly span{display:none}
   .view-head{padding:18px 18px 8px}
   .banner{margin:4px 18px 8px}
+  .find{flex-basis:100%}
   .view-body{padding:4px 6px 80px}
   .row{grid-template-columns:22px minmax(0,1fr);row-gap:4px}
   .row-meta{grid-column:2;flex-wrap:wrap;white-space:normal}

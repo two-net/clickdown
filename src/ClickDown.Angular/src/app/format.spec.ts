@@ -1,4 +1,4 @@
-import { age, ago, color, dueInfo, duration, plural, stamp } from './format';
+import { age, ago, color, dueInfo, duration, matches, plural, stamp } from './format';
 
 describe('format', () => {
   const now = new Date(2026, 8, 11, 12).getTime(); // a Friday, local time
@@ -49,5 +49,15 @@ describe('format', () => {
     expect(color('url(https://x.test/a.png)')).toBe('#56666F'); // CSS must never load anything
     expect(color('#12345')).toBe('#56666F'); // not a color at all
     expect(color(null, '#000')).toBe('#000');
+  });
+
+  it('matches every word of a search, whatever the case or accents', () => {
+    expect(matches('cafe', ['Café crash'])).toBe(true);
+    expect(matches('CRASH caf', ['Café crash'])).toBe(true); // any order, parts of words
+    expect(matches('zoe bug-12', ['Task c', 'BUG-12', 'Zoë'])).toBe(true); // words from different fields
+    expect(matches('istanbul', ['İstanbul'])).toBe(true);
+    expect(matches('कुत', ['किताब'])).toBe(false); // a Hindi vowel sign isn't an accent
+    expect(matches('crash ui', ['Café crash', null])).toBe(false); // every word must appear
+    expect(matches('  ', [])).toBe(true); // nothing typed: everything
   });
 });

@@ -1,4 +1,4 @@
-// How the views write dates, durations, counts and ClickUp's colors. Pure functions.
+// How the views write dates, durations, counts and ClickUp's colors, and match searches. Pure functions.
 const EN = 'en-US';
 const DAY = 86_400_000;
 const weekday = new Intl.DateTimeFormat(EN, { weekday: 'short' });
@@ -63,6 +63,15 @@ export function duration(ms: number): string {
 
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 export const cap = (s: string | null | undefined) => (s ? s[0].toUpperCase() + s.slice(1) : '');
+
+/** Lowercase and without Latin accents, so "cafe" finds "Café" and "zoe" finds "Zoë". Other scripts' marks carry meaning, so they stay. */
+const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+/** Whether every word of a search appears somewhere in the texts, whatever the case and accents. A blank search matches. */
+export function matches(query: string, texts: (string | null)[]): boolean {
+  const text = fold(texts.join('\n')); // words hold no whitespace, so none spans two texts
+  return fold(query).split(/\s+/).every((word) => text.includes(word));
+}
 
 /** A ClickUp color only if it's plain #hex: it ends up in CSS, which must never load anything. */
 export const color = (value: string | null | undefined, fallback = '#56666F') =>

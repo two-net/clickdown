@@ -10,16 +10,16 @@ import { Frame, Kind, Navigator } from './navigator';
     @let f = frame();
     @if (!f.ready() && f.kind !== 'task') {
       <div class="sk" aria-hidden="true">
-        @for (n of skeleton(f.kind); track n) {
+        @for (n of f.kind === 'list' ? [1, 2, 3, 4, 5, 6, 7] : [1, 2, 3, 4]; track n) {
           <div class="sk-row"><span class="sk-dot"></span><span class="sk-bar"></span><span class="sk-bar"></span></div>
         }
       </div>
       <span class="sr-only">Loading</span>
     } @else if (!f.items().length && f.kind !== 'task') {
-      <div class="state"><p>{{ empty[f.kind] }}</p></div>
+      <div class="state"><p>{{ f.all().length ? 'Nothing here matches “' + f.query().trim() + '”. Esc clears the search.' : empty[f.kind] }}</p></div>
     } @else {
-      <div class="rows" role="listbox" tabindex="0" [attr.aria-label]="f.kind === 'task' ? 'Subtasks' : f.title"
-           [attr.aria-activedescendant]="f.items().length ? 'v' + f.key + '-o' + f.highlight() : null">
+      <div class="rows" role="listbox" tabindex="0" [id]="'v' + f.key + '-rows'" [attr.aria-label]="f.kind === 'task' ? 'Subtasks' : f.title"
+           [attr.aria-activedescendant]="f.active()">
         @for (g of f.groups(); track $index; let gi = $index) {
           <div role="group" [attr.aria-label]="g.status ? g.label + ', ' + plural(g.items.length, 'task') : g.label">
             @if (g.status) {
@@ -29,7 +29,7 @@ import { Frame, Kind, Navigator } from './navigator';
             }
             @for (item of g.items; track item.open + item.id; let j = $index) {
               @let i = starts()[gi] + j;
-              <div class="row" [class.more]="item.open === 'more'" role="option" [id]="'v' + f.key + '-o' + i"
+              <div class="row" [class.more]="item.open === 'more'" role="option" [id]="f.optionId(item)"
                    [attr.aria-selected]="i === f.highlight()" (click)="click(f, i, $event)">
                 @if (item.task; as t) {
                   @let due = dueInfo(t.due_date, t.status.type === 'closed');
@@ -94,19 +94,16 @@ export class ItemList {
 
   constructor() {
     const host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
-    let last = -1; // no scrolling on the first render: a task view must stay at its top
+    let last = ''; // no scrolling on the first render: a task view must stay at its top
     afterRenderEffect(() => {
-      const highlight = this.frame().highlight();
-      if (last !== -1 && highlight !== last) host.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest' });
-      last = highlight;
+      const f = this.frame();
+      const at = `${f.highlight()} ${f.query()} ${f.sort()}`; // a search or a sort moves the rows under the selection too
+      if (last && at !== last) host.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest' });
+      last = at;
     });
   }
 
   private static readonly NAMES = new Intl.ListFormat('en-US');
-
-  protected skeleton(kind: Kind): number[] {
-    return [1, 2, 3, 4, 5, 6, 7].slice(0, kind === 'list' ? 7 : 4);
-  }
 
   protected names(task: Task): string {
     return ItemList.NAMES.format(task.assignees.map((a) => a.username ?? '?'));

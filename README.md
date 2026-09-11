@@ -111,7 +111,10 @@ message with the full path of the file to edit, and exits. If ClickUp rejects th
 | Page Up / Page Down | move ten rows; in a task, scroll a screen |
 | Home / End | first or last row; in a task, its top or bottom |
 | Enter or → | open |
-| Esc, Backspace or ← | back |
+| Esc | one step out: clear the search, then leave the search box, then back |
+| Backspace or ← | back |
+| `/` | search this screen (not in a task); in the box, letters type, and ↑ / ↓, Page Up / Page Down and Enter still work on the rows |
+| `s` | in a list, sort its tasks the next way: ClickUp's order, due date, priority, name |
 | Tab | in a task, reach its subtasks (then ↑ / ↓ and Enter work on them) |
 | `r` | refresh |
 | `?` | show or hide the keys |
@@ -130,6 +133,16 @@ Lists show their open tasks grouped by status, 100 at a time ("Load more tasks")
 subtasks, as ClickUp does by default; a task's subtasks appear in its detail view. Comments read oldest first
 and load 25 at a time ("Load older comments"). If ClickUp rate-limits you, a banner and the status bar count
 down and ClickDown retries by itself.
+
+Search (`/`, or the box under a screen's title) narrows its rows as you type. It ignores case and accents, and
+every word you type must appear: in a list it looks at each task's name, ID, tags and assignees; elsewhere, at
+names. ClickUp's API can't search text, so ClickDown searches what it has loaded; in a long list, "Load more
+tasks" stays at the bottom so you can search the next 100 too. A search stays with its screen, so it's still
+there when you come back from a task.
+
+In a list, the Sort button (or `s`) orders the tasks within each status by due date (soonest first), priority
+(urgent first) or name (A to Z), or back in ClickUp's order; tasks without a due date or priority come last. It
+sorts the tasks loaded so far, and holds for every list until you reload the page.
 
 ## Logs
 
