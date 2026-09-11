@@ -1,0 +1,152 @@
+@if (splash()) {
+  <div class="splash" animate.leave="splash-leave" (pointerdown)="skipSplash()" aria-hidden="true">
+    <div class="splash-inner">
+      <div class="splash-word">
+        <svg class="splash-mark" viewBox="0 0 24 24"><path d="M4.5 8.5 12 16l7.5-7.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div class="splash-letters">
+          @for (letter of letters; track $index) {
+            <span [style.--i]="$index">{{ letter }}</span>
+          }
+        </div>
+      </div>
+      <p class="splash-line">ClickUp, read-only.</p>
+    </div>
+  </div>
+}
+
+@if (fatal(); as error) {
+  <div class="fatal">
+    <div class="fatal-inner" role="alert">
+      <svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 8.5 12 16l7.5-7.5" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <h1>ClickUp didn’t accept the token</h1>
+      <p>ClickDown checked the token with ClickUp and got <strong>401</strong> back (“{{ error.message }}”). The token in the config file is mistyped, revoked, or from another account.</p>
+      <ol>
+        <li>In ClickUp, click your avatar, then <strong>Settings</strong>, then <strong>Apps</strong>.</li>
+        <li>Under <strong>API Token</strong>, choose <strong>Regenerate</strong> and copy the new token.</li>
+        <li>Put it in <code>clickup_token</code> in <code>{{ error.configPath }}</code>.</li>
+        <li>Restart ClickDown (<kbd>Ctrl</kbd>+<kbd>C</kbd>, then <code>cargo run</code>), then press <kbd>R</kbd> here.</li>
+      </ol>
+      <p class="foot">ClickDown reads config.toml only when it starts, and the page never sees the token.</p>
+    </div>
+  </div>
+} @else {
+  <div class="app" [style.--depth]="depth()">
+    <header class="topbar">
+      <div class="brand"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 8.5 12 16l7.5-7.5" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>ClickDown</div>
+      <div class="readonly" title="ClickDown only reads from ClickUp. It never changes anything."><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg><span>Read-only</span></div>
+    </header>
+
+    <div class="main">
+      <nav class="rail" #rail aria-label="Where you are">
+        @if (nav.rail(); as r) {
+          <button class="rail-root" type="button" [disabled]="!r.rootEnabled" (click)="nav.popTo(0)">{{ r.rootLabel }}</button>
+          <ol class="levels" [class.down]="r.down" [style.--pop-delay]="r.popDelay + 'ms'">
+            @for (l of r.levels; track l.d) {
+              <li class="lvl" [class.is-reached]="l.reached" [class.is-current]="l.current" [class.is-ahead]="l.ahead"
+                  [class.is-skipped]="l.skipped" [class.stem-on]="l.stemOn"
+                  [style.--c]="l.color" [style.--c2]="l.nextColor" [style.--step]="l.step">
+                <button class="lvl-btn" type="button" [disabled]="!l.clickable" [attr.aria-current]="l.current ? 'location' : null"
+                        [attr.aria-label]="l.label" (click)="nav.popTo(l.target)">
+                  <span class="dot" aria-hidden="true"></span>
+                  <span class="lvl-text" aria-hidden="true"><span class="lvl-name">{{ l.name }}</span>@if (l.value) {<span class="lvl-value" [title]="l.value">{{ l.value }}</span>}</span>
+                </button>
+                <span class="stem" aria-hidden="true"><i></i></span>
+              </li>
+            }
+          </ol>
+        }
+      </nav>
+
+      <main class="stage" [class.back]="nav.back()">
+        @for (f of nav.top(); track f.key) {
+          <section class="view" [attr.data-key]="f.key" [attr.data-kind]="f.kind" [attr.aria-labelledby]="'v' + f.key + '-title'"
+                   animate.enter="view-enter" animate.leave="view-leave">
+            <header class="view-head">
+              <h1 [id]="'v' + f.key + '-title'">{{ f.task()?.name ?? f.title }}</h1>
+              <p class="view-sub">
+                @if (f.task(); as t) {
+                  <span class="sub-text">
+                    <span class="pill" [style.--s]="color(t.status.color)"><span class="sdot" aria-hidden="true"></span>{{ cap(t.status.status) }}</span>
+                    <span>{{ nav.whereIs(f) }}</span>
+                    <span class="num">ID {{ t.custom_id || t.id }}</span>
+                  </span>
+                } @else {
+                  <span class="sub-text">{{ f.ready() ? f.summary() : f.error() ? '' : 'Loading…' }}</span>
+                }
+                @if (f.busy(); as busy) {
+                  <span class="busy"><span class="spin" aria-hidden="true"></span>{{ busy }}</span>
+                }
+              </p>
+            </header>
+            @if (backend.retryIn()) {
+              <div class="banner" role="status">ClickUp’s rate limit is reached. ClickDown retries in {{ backend.retryIn() }} s.</div>
+            } @else if (f.ready() && f.error(); as error) {
+              <div class="banner error" role="alert">Refresh failed. {{ describe(error) }}</div>
+            }
+            <div class="view-body" tabindex="-1" [attr.aria-busy]="!f.ready() && !f.error()">
+              @if (!f.ready() && f.error(); as error) {
+                <div class="state error" role="alert">
+                  <h2>{{ errorTitle(error) }}</h2>
+                  <p>{{ errorText(error) }}</p>
+                  <button class="btn" type="button" (click)="refresh(f)">Retry</button><span class="state-key">or press <kbd>R</kbd></span>
+                </div>
+              } @else if (f.kind === 'task') {
+                <app-task-detail [frame]="f" />
+              } @else {
+                <app-item-list [frame]="f" />
+              }
+            </div>
+          </section>
+        }
+      </main>
+    </div>
+
+    <footer class="statusbar">
+      <div class="hints">
+        <span class="hint keep"><kbd>↑</kbd><kbd>↓</kbd> Move</span>
+        <span class="hint keep"><kbd>Enter</kbd> Open</span>
+        <span class="hint"><kbd>Esc</kbd> Back</span>
+        <span class="hint opt"><kbd>R</kbd> Refresh</span>
+        <button class="hint hint-btn" type="button" (click)="openHelp()"><kbd>?</kbd> Keys</button>
+      </div>
+      <div class="status-right">
+        <span class="net" [class.offline]="!backend.inflight() && backend.connection() !== 'ok'">
+          @if (backend.inflight()) {
+            <span class="spin" aria-hidden="true"></span>Loading
+          } @else if (backend.connection() === 'network') {
+            Can’t reach ClickUp
+          } @else if (backend.connection() === 'unreachable') {
+            ClickDown server isn’t running
+          }
+        </span>
+        <span class="rate num" [class.limited]="backend.retryIn()">
+          @if (backend.retryIn()) {
+            Rate limited, retrying in {{ backend.retryIn() }} s
+          } @else if (backend.rate(); as rate) {
+            {{ rate.remaining }} of {{ rate.limit }} requests left this minute
+          }
+        </span>
+      </div>
+    </footer>
+  </div>
+
+  <dialog class="help" #help aria-labelledby="help-title" (click)="onHelpClick($event)">
+    <div class="help-inner">
+      <h2 id="help-title">Keyboard shortcuts</h2>
+      <table class="keys">
+        <tr><td><kbd>↑</kbd><kbd>↓</kbd> or <kbd>J</kbd><kbd>K</kbd></td><td>Move the selection, or scroll a task</td></tr>
+        <tr><td><kbd>Enter</kbd> or <kbd>→</kbd></td><td>Open the selected item</td></tr>
+        <tr><td><kbd>Esc</kbd>, <kbd>Backspace</kbd> or <kbd>←</kbd></td><td>Go up one level</td></tr>
+        <tr><td><kbd>Home</kbd> <kbd>End</kbd></td><td>First or last item</td></tr>
+        <tr><td><kbd>Page Up</kbd> <kbd>Page Down</kbd></td><td>Move ten items, or scroll a task</td></tr>
+        <tr><td><kbd>Tab</kbd></td><td>In a task, reach its subtasks</td></tr>
+        <tr><td><kbd>R</kbd></td><td>Refresh this screen</td></tr>
+        <tr><td><kbd>?</kbd></td><td>Show or hide this list</td></tr>
+      </table>
+      <p>ClickDown is read-only, so none of these can change anything in ClickUp.</p>
+      <button class="btn primary" type="button" (click)="closeHelp()">Close</button>
+    </div>
+  </dialog>
+}
+
+<div class="toast" [class.show]="nav.toast().shown" role="status" aria-live="polite">{{ nav.toast().text }}</div>

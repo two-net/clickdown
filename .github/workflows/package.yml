@@ -1,0 +1,170 @@
+# Checks ClickDown, builds it natively for amd64 and arm64, and pushes a container image made from
+# just the compiled binary and the built UI to GitHub Packages (ghcr.io/<owner>/<repo>). No source
+# code is ever sent to Docker. Pull requests are checked and built, but nothing is pushed.
+name: Package
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/ClickDown.Angular/package-lock.json
+      - name: UI
+        working-directory: src/ClickDown.Angular
+        run: |
+          npm ci
+          npm run build
+          npx ng test --watch=false
+      - name: Backend
+        working-directory: src/ClickDown
+        run: |
+          rustup toolchain install 1.97 --profile minimal --component rustfmt,clippy
+          rustup default 1.97
+          cargo fmt --check
+          cargo clippy --all-targets --locked -- -D warnings
+          cargo test --locked
+
+  image:
+    needs: check
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      PUSH: ${{ github.event_name != 'pull_request' }}
+    steps:
+      - name: Names
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+          echo "PLATFORM_PAIR=${PLATFORM//\//-}" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/ClickDown.Angular/package-lock.json
+      - name: Rust and cmake
+        run: |
+          if ! command -v rustup >/dev/null; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+            export PATH="$HOME/.cargo/bin:$PATH"
+          fi
+          rustup toolchain install 1.97 --profile minimal
+          rustup default 1.97
+          command -v cmake >/dev/null || { sudo apt-get update && sudo apt-get install -y cmake; }
+      # config.rs and main.rs fix config.toml's and the UI's paths at compile time, relative to the
+      # crate's folder, so it's built in the folder the image runs it from.
+      - name: Build in /opt/clickdown
+        run: |
+          sudo mkdir -p /opt/clickdown && sudo chown "$USER" /opt/clickdown
+          cp -R src/ClickDown src/ClickDown.Angular /opt/clickdown/
+          (cd /opt/clickdown/ClickDown.Angular && npm ci && npm run build)
+          (cd /opt/clickdown/ClickDown && cargo build --release --locked)
+      - name: Keep only the binary and the built UI
+        run: |
+          mkdir -p "$RUNNER_TEMP/image"
+          cp /opt/clickdown/ClickDown/target/release/clickdown "$RUNNER_TEMP/image/"
+          cp -R /opt/clickdown/ClickDown.Angular/dist/clickdown-angular/browser "$RUNNER_TEMP/image/"
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        if: env.PUSH == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+      - id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ runner.temp }}/image
+          file: ${{ github.workspace }}/Dockerfile
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=${{ env.PUSH }}
+      - name: Export the digest
+        if: env.PUSH == 'true'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@v7
+        if: env.PUSH == 'true'
+        with:
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Joins the two single-platform images into one tag per name: latest (default branch), the
+  # branch, sha-<commit>, and for v1.2.3 tags 1.2.3 and 1.2.
+  push:
+    if: github.event_name != 'pull_request'
+    needs: image
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Names
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v4
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+      - name: Create the multi-arch tags
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "$IMAGE@sha256:%s " *)
+      - name: Inspect
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: docker buildx imagetools inspect "$IMAGE:$VERSION"

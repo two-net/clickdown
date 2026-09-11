@@ -1,0 +1,2 @@
+# Keep short calls on one line within the usual 100 columns (the default splits them at 60).
+use_small_heuristics = "Max"

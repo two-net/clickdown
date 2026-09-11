@@ -1,0 +1,8 @@
+clickup_token = "pk_REPLACE_ME"    # ClickUp avatar → Settings → Apps → API Token → Generate
+log_level = "info"                 # off | error | warn | info | debug | trace
+log_file = "logs/clickdown.log"    # relative to this file's folder
+animations = true
+
+# Optional: show only these lists. A list's id is the part after /li/ in its ClickUp URL
+# (https://app.clickup.com/<workspace>/v/li/<list id>). Leave it out to browse everything.
+# only_lists = ["901234567"]
