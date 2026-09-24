@@ -23,7 +23,9 @@ export interface TaskDetail extends Task {
   date_updated: number | null; start_date: number | null;  // epoch ms
   time_estimate: number | null;     // ms
   points: number | null;
+  attachments: Attachment[];  // newest first: the task's own and its comments'
 }
+export interface Attachment { id: string; title: string; url: string | null; size: number | null; date: number | null; user: User | null; parent_id: string | null }  // size in bytes; url shows the file in the browser; parent_id: the id of the task, comment or Files field it's attached to
 export interface Comment { id: string; comment_text: string; user: User | null; date: number | null; reply_count: number | null }
 export interface TasksPage { tasks: Task[]; last_page: boolean }
 export interface CommentsPage { comments: Comment[]; has_more: boolean }  // newest first, 25 a page

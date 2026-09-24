@@ -61,6 +61,16 @@ export function duration(ms: number): string {
   return h && m ? `${h} h ${m} min` : h ? `${h} h` : `${m} min`;
 }
 
+const oneDecimal = new Intl.NumberFormat(EN, { maximumFractionDigits: 1 });
+const SIZES = ['bytes', 'KB', 'MB', 'GB'];
+
+/** A file size, in thousands as macOS counts: "820 bytes", "340 KB", "1.9 MB". */
+export function bytes(n: number): string {
+  let [value, unit] = [n, 0];
+  for (; value >= 999.95 && unit < SIZES.length - 1; unit++) value /= 1000;
+  return unit ? `${oneDecimal.format(value)} ${SIZES[unit]}` : plural(n, 'byte');
+}
+
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 export const cap = (s: string | null | undefined) => (s ? s[0].toUpperCase() + s.slice(1) : '');
 

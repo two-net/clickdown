@@ -1,4 +1,4 @@
-import { age, ago, color, dueInfo, duration, matches, plural, stamp } from './format';
+import { age, ago, bytes, color, dueInfo, duration, matches, plural, stamp } from './format';
 
 describe('format', () => {
   const now = new Date(2026, 8, 11, 12).getTime(); // a Friday, local time
@@ -39,12 +39,18 @@ describe('format', () => {
     expect(stamp(null)).toBeNull();
   });
 
-  it('writes durations and counts, and passes on only plain colors', () => {
+  it('writes durations, counts and file sizes, and passes on only plain colors', () => {
     expect(duration(5_400_000)).toBe('1 h 30 min');
     expect(duration(7_200_000)).toBe('2 h');
     expect(duration(900_000)).toBe('15 min');
     expect(plural(1, 'task')).toBe('1 task');
     expect(plural(2, 'status', 'statuses')).toBe('2 statuses');
+    expect(bytes(1)).toBe('1 byte');
+    expect(bytes(999)).toBe('999 bytes');
+    expect(bytes(140_970)).toBe('141 KB');
+    expect(bytes(999_960)).toBe('1 MB'); // never "1,000 KB"
+    expect(bytes(1_928_395)).toBe('1.9 MB');
+    expect(bytes(4_300_000_000_000)).toBe('4,300 GB');
     expect(color('#abc')).toBe('#abc');
     expect(color('url(https://x.test/a.png)')).toBe('#56666F'); // CSS must never load anything
     expect(color('#12345')).toBe('#56666F'); // not a color at all

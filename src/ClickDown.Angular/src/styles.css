@@ -24,7 +24,7 @@
 *,*::before,*::after{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{font:400 16px/1.5 var(--sans);color:var(--ink);background:var(--shallows);-webkit-font-smoothing:antialiased;overflow:hidden}
-app-root,app-item-list,app-task-detail{display:block}
+app-root,app-item-list,app-task-detail,app-files{display:block}
 button{font:inherit;color:inherit;cursor:pointer}
 :focus-visible{outline:2px solid var(--d4);outline-offset:2px}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
@@ -227,6 +227,15 @@ code,kbd,pre{font-family:var(--mono)}
 .md .check.done::after{content:"";width:4px;height:8px;margin-top:-2px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
 .md li:has(> .check.done, > p:first-child > .check.done){color:var(--slate)}
 .md li:has(> .check.done, > p:first-child > .check.done) :is(ul,ol){color:var(--ink)}
+
+/* Attachments: links, so the browser never loads a file or a thumbnail by itself */
+.files{max-width:68ch;margin:0;padding:0;list-style:none}
+.file{display:grid;grid-template-columns:18px minmax(0,1fr);column-gap:12px;padding:6px 0;overflow-wrap:anywhere}
+.file svg{grid-row:span 2;width:18px;height:18px;margin-top:3px;color:var(--slate)}
+.file a{justify-self:start;color:var(--d4);font-weight:620;text-decoration-thickness:1px;text-underline-offset:3px}
+.file-meta{display:flex;flex-wrap:wrap;gap:0 8px;font-size:14px;color:var(--slate)}
+.file-meta>*+*::before{content:"·" / "";margin-right:8px}
+.comment .files{margin:6px 0 -6px}
 
 /* Comments */
 .comments{max-width:68ch}

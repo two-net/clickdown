@@ -1,7 +1,7 @@
 # ClickDown
 
 A fast, read-only browser for ClickUp. Walk Workspace → Space → Folder → List → Task with the keyboard, read
-descriptions, subtasks and comments, and never risk changing anything.
+descriptions, subtasks, attachments and comments, and never risk changing anything.
 
 ![The Workspaces screen: the rail on the left, the workspace list, and the keys and remaining requests in the status bar](docs/screenshots/workspaces.png)
 
@@ -137,8 +137,10 @@ in their Workspace, under *Shared with you*. You can open them even if you can't
 
 Lists show their open tasks grouped by status, 100 at a time ("Load more tasks"), and leave out closed tasks and
 subtasks, as ClickUp does by default; a task's subtasks appear in its detail view. Comments read oldest first
-and load 25 at a time ("Load older comments"). If ClickUp rate-limits you, a banner and the status bar count
-down and ClickDown retries by itself.
+and load 25 at a time ("Load older comments"). A task's attachments, its own and those in its comments (which
+also appear under their comment), are links that open the file from ClickUp in a new tab; if your Workspace
+turned on private attachment links, opening one needs you signed in to ClickUp in the same browser. If ClickUp
+rate-limits you, a banner and the status bar count down and ClickDown retries by itself.
 
 Search (`/`, or the box under a screen's title) narrows its rows as you type. It ignores case and accents, and
 every word you type must appear: in a list it looks at each task's name, ID, tags and assignees; elsewhere, at

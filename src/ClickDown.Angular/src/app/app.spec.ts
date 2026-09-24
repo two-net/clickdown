@@ -220,6 +220,10 @@ describe('App', () => {
       description_html: '<ul><li><span class="check done" role="img" aria-label="Done"></span>Ship it</li></ul>',
       creator: cy, date_created: now - 3 * 86_400_000, date_updated: now - 3_600_000, start_date: null,
       time_estimate: 5_400_000, points: 3,
+      attachments: [
+        { id: 'f2', title: 'trace.log', url: null, size: 820, date: now - 600_000, user: cy, parent_id: 'c2' }, // in a comment
+        { id: 'f1', title: 'crash.png', url: 'https://t1.p.clickup-attachments.com/t1/f1/crash.png?view=open', size: 1_928_395, date: now - 7_200_000, user: null, parent_id: 'a' },
+      ],
     });
     http.expectOne('/api/task/a/comment').flush({
       comments: [
@@ -245,6 +249,14 @@ describe('App', () => {
     expect(page).toContain('2 replies');
     expect(page.indexOf('First')).toBeLessThan(page.indexOf('Second'));
     expect(el.querySelector('.md .check.done')?.getAttribute('aria-label')).toBe('Done'); // kept by the sanitizer
+    const files = [...el.querySelectorAll('.task-doc > app-files .file')]; // all of them, comments' too
+    expect(files.map((f) => f.querySelector(':scope > a, :scope > span')?.textContent)).toEqual(['trace.log', 'crash.png']);
+    expect(files.map((f) => [...f.querySelectorAll('.file-meta > *')].map((m) => m.textContent))).toEqual([['820 bytes', '10 minutes ago by Cy'], ['1.9 MB', '2 hours ago by someone']]);
+    expect(el.querySelector('.file a')?.getAttribute('href')).toBe('https://t1.p.clickup-attachments.com/t1/f1/crash.png?view=open');
+    expect(el.querySelector('.file img')).toBeNull(); // a link: nothing loads until it's opened
+    const underComments = [...el.querySelectorAll('.comment')].map((c) => c.querySelector('.file a, .file span')?.textContent ?? null);
+    expect(underComments).toEqual([null, 'trace.log']); // under Cy's comment, c2, too
+    expect([...el.querySelectorAll('.comment .file-meta > *')].map((m) => m.textContent)).toEqual(['820 bytes']); // the comment's head says when and who
     expect(el.querySelectorAll('.lvl.stem-on').length).toBe(1);
     expect(TestBed.inject(Location).path()).toBe('/list/7/task/a');
 
@@ -263,7 +275,7 @@ describe('App', () => {
     subtasks.focus();
     press('Enter', subtasks);
     http.expectOne('/api/task/s/comment').flush({ comments: [], has_more: false });
-    http.expectOne('/api/task/s').flush({ ...task('s', 'to do', 0, { parent: 'a' }), subtasks: [], description_html: '' });
+    http.expectOne('/api/task/s').flush({ ...task('s', 'to do', 0, { parent: 'a' }), subtasks: [], description_html: '', attachments: [] });
     await settle(fixture);
     expect(text(fixture)).toContain('Subtask of Task a');
     expect(TestBed.inject(Location).path()).toBe('/list/7/task/a/task/s');
@@ -273,7 +285,7 @@ describe('App', () => {
     const crash = task('a', 'to do', 0, { name: 'Crash on save' });
     const openTask = () => {
       http.expectOne('/api/task/a/comment').flush({ comments: [], has_more: false });
-      http.expectOne('/api/task/a').flush({ ...crash, subtasks: [], description_html: '' });
+      http.expectOne('/api/task/a').flush({ ...crash, subtasks: [], description_html: '', attachments: [] });
     };
     const fixture = await boot('/workspace/9/space/5/list/7/task/a'); // a bookmark, or a reload
     http.expectOne('/api/user').flush(ada);
@@ -381,7 +393,7 @@ describe('App', () => {
     http.expectOne('/api/list/7').flush({ id: '7', name: 'Bugs', task_count: 1 });
     http.expectOne('/api/list/7/task?page=0').flush({ tasks: [task('a', 'to do', 0)], last_page: true });
     http.expectOne('/api/task/a/comment').flush({ comments: [], has_more: false });
-    http.expectOne('/api/task/a').flush({ ...task('a', 'to do', 0, { name: 'Crash on save' }), subtasks: [], description_html: '' });
+    http.expectOne('/api/task/a').flush({ ...task('a', 'to do', 0, { name: 'Crash on save' }), subtasks: [], description_html: '', attachments: [] });
     await settle(fixture);
     expect(location.path()).toBe('/list/7/task/a');
     expect(document.title).toBe('Crash on save – ClickDown');
@@ -492,7 +504,7 @@ describe('App', () => {
     press('ArrowUp', box());
     press('Enter', box());
     http.expectOne('/api/task/c/comment').flush({ comments: [], has_more: false });
-    http.expectOne('/api/task/c').flush({ ...task('c', 'in progress', 1), subtasks: [], description_html: '' });
+    http.expectOne('/api/task/c').flush({ ...task('c', 'in progress', 1), subtasks: [], description_html: '', attachments: [] });
     await settle(fixture);
     expect(document.title).toBe('Task c – ClickDown');
 

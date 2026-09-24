@@ -1,12 +1,48 @@
 import { Component, computed, inject, input } from '@angular/core';
-import { age, ago, cap, color, day, dueInfo, duration, fullDate, plural, stamp } from './format';
+import { age, ago, bytes, cap, color, day, dueInfo, duration, fullDate, plural, stamp } from './format';
 import { ItemList } from './item-list';
+import { Attachment } from './models';
 import { Frame, Navigator, describe } from './navigator';
 
-/** A task, as a document: properties, description, subtasks and comments. */
+/** Files as links, so nothing loads until one is opened. */
+@Component({
+  selector: 'app-files',
+  template: `
+    <ul class="files">
+      @for (a of files(); track a.id) {
+        <li class="file">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 3.5H7A1.5 1.5 0 0 0 5.5 5v14A1.5 1.5 0 0 0 7 20.5h10a1.5 1.5 0 0 0 1.5-1.5V8.5m-5-5 5 5m-5-5v5h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+          @if (a.url) {
+            <a [href]="a.url">{{ a.title || 'Untitled file' }}</a>
+          } @else {
+            <span>{{ a.title || 'Untitled file' }}</span>
+          }
+          <span class="file-meta">
+            @if (a.size != null) {
+              <span class="num">{{ bytes(a.size) }}</span>
+            }
+            @if (a.date && byline()) {
+              <span [title]="fullDate(a.date)">{{ ago(a.date) }} by {{ a.user?.username || 'someone' }}</span>
+            }
+          </span>
+        </li>
+      }
+    </ul>
+  `,
+})
+export class Files {
+  readonly files = input.required<Attachment[]>();
+  /** When and by whom; under a comment, its head already says. */
+  readonly byline = input(true);
+  protected readonly ago = ago;
+  protected readonly bytes = bytes;
+  protected readonly fullDate = fullDate;
+}
+
+/** A task, as a document: properties, description, subtasks, attachments and comments. */
 @Component({
   selector: 'app-task-detail',
-  imports: [ItemList],
+  imports: [Files, ItemList],
   template: `
     @let f = frame();
     @if (f.task(); as t) {
@@ -75,6 +111,11 @@ import { Frame, Navigator, describe } from './navigator';
           <app-item-list [frame]="f" />
         }
 
+        @if (t.attachments.length) {
+          <h2 class="section-h">Attachments <span class="count num">{{ t.attachments.length }}</span></h2>
+          <app-files [files]="t.attachments" />
+        }
+
         <h2 class="section-h">Comments <span class="count num">{{ commentCount() }}</span></h2>
         <div class="comments" [attr.aria-busy]="f.comments() === null && !f.commentsError()">
           @if (f.commentsError(); as error) {
@@ -97,6 +138,9 @@ import { Frame, Navigator, describe } from './navigator';
                     }
                   </div>
                   <p class="comment-text">{{ c.comment_text }}</p>
+                  @if (commentFiles().get(c.id); as files) {
+                    <app-files [files]="files" [byline]="false" />
+                  }
                 </div>
               </div>
             } @empty {
@@ -138,6 +182,12 @@ export class TaskDetail {
   protected readonly stamp = stamp;
   /** ClickUp pages comments newest first; they read oldest first. */
   protected readonly oldestFirst = computed(() => [...(this.frame().comments() ?? [])].reverse());
+  /** A comment's files by comment id, oldest first like its text: ClickUp lists them, newest first, with the task's own. */
+  protected readonly commentFiles = computed(() => {
+    const files = new Map<string, Attachment[]>();
+    for (const a of this.frame().task()?.attachments ?? []) if (a.parent_id) files.set(a.parent_id, [a, ...(files.get(a.parent_id) ?? [])]);
+    return files;
+  });
   protected readonly commentCount = computed(() => {
     const comments = this.frame().comments();
     return comments?.length ? `${comments.length}${this.frame().olderComments() ? '+' : ''}` : '';

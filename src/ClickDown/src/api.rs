@@ -355,12 +355,35 @@ pub struct TaskDetail {
     pub time_estimate: Option<u64>,
     #[serde(default)]
     pub points: Option<f64>,
+    /// Files on the task and on its comments, newest first. Only this endpoint sends them;
+    /// subtasks come without theirs.
+    #[serde(default)]
+    pub attachments: Vec<Attachment>,
     #[serde(skip_serializing)]
     pub markdown_description: Option<String>,
     #[serde(skip_serializing)]
     pub text_content: Option<String>,
     #[serde(skip_deserializing)]
     pub description_html: String,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct Attachment {
+    pub id: String,
+    #[serde(default)]
+    pub title: String,
+    /// `url_w_query`, which opens the file in the browser: `url` downloads it, and on workspaces
+    /// with private attachment links carries a one-use token.
+    #[serde(rename(deserialize = "url_w_query"))]
+    pub url: Option<String>,
+    /// Bytes.
+    #[serde(default, deserialize_with = "lenient_int")]
+    pub size: Option<u64>,
+    #[serde(default, deserialize_with = "lenient_int")]
+    pub date: Option<u64>,
+    pub user: Option<User>,
+    /// The id of what it's attached to: the task, a comment or a Files custom field.
+    pub parent_id: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -444,6 +467,32 @@ mod tests {
             "creator":{"id":-1,"username":"ClickBot"}}"#;
         let task: TaskDetail = serde_json::from_str(by_automation).unwrap();
         assert_eq!(task.creator.map(|c| c.id), Some(-1));
+    }
+
+    #[test]
+    fn parses_the_attachments() {
+        // Shaped like a real Get Task answer: the date is a string and some fields are null.
+        let json = r##"{"id":"9hx","name":"n","status":{"status":"s"},"attachments":[
+            {"id":"62447c77.png","date":"1756167347649","title":"shot.png","type":2,"source":1,
+             "version":0,"extension":"png","thumbnail_small":null,"is_folder":null,
+             "mimetype":"image/png","hidden":false,"parent_id":"90130160766982","size":140970,
+             "user":{"id":183,"username":"Alex Johnson","color":"#827718","initials":"AJ"},
+             "deleted":false,"orientation":null,
+             "url":"https://t1.p.clickup-attachments.com/t1/62447c77/shot.png?authz_token=x",
+             "url_w_query":"https://t1.p.clickup-attachments.com/t1/62447c77/shot.png?view=open",
+             "url_w_host":"https://t1.p.clickup-attachments.com/t1/62447c77/shot.png"}]}"##;
+        let task: TaskDetail = serde_json::from_str(json).unwrap();
+        let json = serde_json::to_value(&task).unwrap();
+        let file = &json["attachments"][0];
+        assert_eq!(
+            file["url"],
+            "https://t1.p.clickup-attachments.com/t1/62447c77/shot.png?view=open"
+        );
+        assert_eq!(file["date"], 1756167347649u64); // sent as a string
+        assert_eq!(file["size"], 140970);
+        assert_eq!(file["user"]["username"], "Alex Johnson");
+        assert_eq!(file["parent_id"], "90130160766982"); // a comment's
+        assert!(file.get("url_w_query").is_none() && file.get("mimetype").is_none());
     }
 
     #[test]
