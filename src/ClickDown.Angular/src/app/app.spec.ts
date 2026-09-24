@@ -23,7 +23,7 @@ describe('App', () => {
       providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter(routes), provideLocationMocks()],
     });
     http = TestBed.inject(HttpTestingController);
-    TestBed.inject(Backend).settings.set({ animations: false, only_lists: [] }); // no splash to skip
+    TestBed.inject(Backend).settings.set({ animations: false, only_lists: [] });
   });
 
   afterEach(() => http.verify());
@@ -374,7 +374,6 @@ describe('App', () => {
     const location = TestBed.inject(Location);
     expect(location.path()).toBe('/list/7/task/a');
 
-    press('Shift'); // past the splash: the defaults animate
     press('r');
     http.expectOne('/api/user').flush(ada);
     http.expectOne('/api/settings').flush({ animations: false, only_lists: ['7'] });
@@ -398,7 +397,6 @@ describe('App', () => {
     const location = TestBed.inject(Location);
     expect(location.path()).toBe('/nonsense'); // it could be one of only_lists'
 
-    press('Shift'); // past the splash: the defaults animate
     press('r');
     http.expectOne('/api/settings').flush({ animations: false, only_lists: [] });
     await settle(fixture);
@@ -635,20 +633,6 @@ describe('App', () => {
     expect(el.querySelectorAll('.row').length).toBe(2);
     expect(el.querySelector('.view-sub')?.textContent?.trim()).toBe('2 workspaces');
     expect(document.activeElement).toBe(box);
-  });
-
-  it('only skips the splash with the first key', async () => {
-    TestBed.inject(Backend).settings.set({ animations: true, only_lists: [] });
-    const fixture = TestBed.createComponent(App);
-    http.expectOne('/api/user').flush(ada);
-    http.expectOne('/api/team').flush({ teams: [{ id: '9', name: 'Acme', color: null, member_count: 1 }] });
-    await settle(fixture);
-    expect(fixture.nativeElement.querySelector('.splash')).not.toBeNull();
-
-    press('Enter');
-    await settle(fixture);
-    expect(fixture.nativeElement.querySelector('.splash')).toBeNull();
-    http.expectNone('/api/team/9/space'); // the Enter didn't open Acme
   });
 
   it('maps backend errors', async () => {

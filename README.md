@@ -46,7 +46,7 @@ animations = true
 | `clickup_token` | your personal token (`pk_…`) |
 | `log_level` | `off`, `error`, `warn`, `info`, `debug` or `trace` |
 | `log_file` | where the log is written; a relative path is relative to the config file's folder |
-| `animations` | `true` or `false`; `false` turns every animation off, including the splash (so does your system's reduced-motion setting) |
+| `animations` | `true` or `false`; `false` turns every animation off (so does your system's reduced-motion setting) |
 | `only_lists` | optional; ids of the only lists to show (see below) |
 | `allowed_hosts` | optional; other names to answer, for a reverse proxy (see below) |
 

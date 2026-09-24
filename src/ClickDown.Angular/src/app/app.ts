@@ -22,10 +22,8 @@ export class App {
   protected readonly cap = cap;
   protected readonly color = color;
   protected readonly describe = describe;
-  protected readonly letters = [...'ClickDown'];
   protected readonly sorts = SORTS;
   protected readonly heard = signal(''); // a search's result, for screen readers
-  protected readonly splash = signal(this.backend.motion());
   private tokenChecked = false; // /api/user answered, so ClickUp accepts the token
   private readonly tokenError = signal<LoadError | null>(null);
   /** Only a token ClickUp rejects takes over the screen; other refusals stay in their view. */
@@ -36,13 +34,11 @@ export class App {
   protected readonly depth = computed(() => SELECTION[this.nav.rail()?.current ?? 0]);
   private readonly help = viewChild<ElementRef<HTMLDialogElement>>('help');
   private readonly railEl = viewChild<ElementRef<HTMLElement>>('rail');
-  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
   private shown = 0; // the key of the frame whose view was last set up
 
   constructor() {
     void this.checkToken();
     this.nav.start();
-    if (this.splash()) setTimeout(() => this.splash.set(false), 1060);
     // The toast says it once when a rate-limit wait starts, so screen readers hear it too.
     let waiting = false;
     effect(() => {
@@ -70,11 +66,6 @@ export class App {
   }
 
   protected onKey(event: KeyboardEvent) {
-    if (this.splash()) { // the key only skips the splash
-      this.skipSplash();
-      event.preventDefault();
-      return;
-    }
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     const help = this.help()?.nativeElement;
     if (help?.open) { // the dialog handles Esc itself
@@ -119,11 +110,6 @@ export class App {
       default: return;
     }
     event.preventDefault();
-  }
-
-  protected skipSplash() {
-    this.host.classList.add('splash-skipped'); // a quicker fall
-    this.splash.set(false);
   }
 
   protected openHelp() {

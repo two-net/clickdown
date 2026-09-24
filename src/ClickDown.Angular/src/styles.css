@@ -250,22 +250,6 @@ kbd{display:inline-block;min-width:20px;padding:0 5px;border:1px solid var(--rul
 .net.offline{color:var(--err-ink);font-weight:620}
 .rate.limited{color:var(--warn-ink);font-weight:620}
 
-/* Splash: the one orchestrated moment. The mark and letters drop in, then the curtain falls. */
-.splash{position:fixed;inset:0;z-index:80;display:grid;place-items:center;overflow:hidden;background:var(--d5);color:var(--shallows)}
-.splash-inner{display:grid;justify-items:center;gap:16px}
-.splash-word{display:flex;align-items:center;gap:14px}
-.splash-mark{width:64px;height:64px;color:var(--d1);animation:mark-drop .44s cubic-bezier(.3,.7,.4,1) backwards}
-.splash-letters{display:flex;overflow:hidden;padding:.14em .04em .22em;font-size:72px;line-height:1;font-weight:720;letter-spacing:-.02em}
-.splash-letters span{display:inline-block;animation:letter-drop .44s cubic-bezier(.3,.7,.4,1) calc(90ms + var(--i) * 36ms) backwards}
-.splash-line{margin:0;font-size:18px;color:#B9D1DC;animation:line-in .24s ease-out .64s backwards}
-.splash-leave{animation:curtain-fall .38s cubic-bezier(.55,0,.9,.45) forwards;pointer-events:none}
-.splash-skipped .splash-leave{animation-duration:.24s}
-.splash-leave .splash-mark,.splash-leave .splash-letters span,.splash-leave .splash-line{animation:none} /* in place as it falls */
-@keyframes mark-drop{from{transform:translateY(-160%);opacity:0}70%{transform:translateY(8%);opacity:1}}
-@keyframes letter-drop{from{transform:translateY(-118%)}70%{transform:translateY(9%)}}
-@keyframes line-in{from{opacity:0;transform:translateY(6px)}}
-@keyframes curtain-fall{to{transform:translateY(100%)}}
-
 /* Stopped screen (ClickUp rejected the token) */
 .fatal{position:fixed;inset:0;z-index:40;overflow:auto;background:var(--shallows)}
 .fatal-inner{max-width:660px;margin:0 auto;padding:11vh 28px 80px}

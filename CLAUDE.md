@@ -9,8 +9,8 @@ in the browser talks only to that backend at http://127.0.0.1:4280 and never see
   on as response headers, markdown → HTML), `tests/read_only.rs` (read-only tripwire), `build.rs` (records the
   rustc/axum/tokio/Angular versions for the startup log).
 - `src/ClickDown.Angular/`: UI, styled after `demo.html` (the design reference; its harness is a mock and never
-  part of the app). `src/app/` holds `app.ts` + `app.html` (shell: rail, views, status bar, help, splash, and
-  the one key handler), `navigator.ts` (the descent's state and the address after the `#` it follows, the rail,
+  part of the app). `src/app/` holds `app.ts` + `app.html` (shell: rail, views, status bar, help, and the
+  one key handler), `navigator.ts` (the descent's state and the address after the `#` it follows, the rail,
   and the search and sort of the rows already loaded: ClickUp's API can't search text), `backend.ts`,
   `models.ts`, `format.ts` (dates, counts, search matching, safe colors), `item-list.ts` (the one listbox, also
   used for subtasks), `task-detail.ts`.
