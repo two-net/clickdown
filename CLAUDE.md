@@ -10,9 +10,10 @@ in the browser talks only to that backend at http://127.0.0.1:4280 and never see
   rustc/axum/tokio/Angular versions for the startup log).
 - `src/ClickDown.Angular/`: UI, styled after `demo.html` (the design reference; its harness is a mock and never
   part of the app). `src/app/` holds `app.ts` + `app.html` (shell: rail, views, status bar, help, splash, and
-  the one key handler), `navigator.ts` (the descent's state, the rail, and the search and sort of the rows
-  already loaded: ClickUp's API can't search text), `backend.ts`, `models.ts`, `format.ts` (dates, counts,
-  search matching, safe colors), `item-list.ts` (the one listbox, also used for subtasks), `task-detail.ts`.
+  the one key handler), `navigator.ts` (the descent's state and the address after the `#` it follows, the rail,
+  and the search and sort of the rows already loaded: ClickUp's API can't search text), `backend.ts`,
+  `models.ts`, `format.ts` (dates, counts, search matching, safe colors), `item-list.ts` (the one listbox, also
+  used for subtasks), `task-detail.ts`.
   All CSS lives in `src/styles.css`; its fonts (Atkinson Hyperlegible, SIL OFL) are in `public/fonts/`. Every
   ClickUp color reaching CSS goes through `format.ts`'s `color()`.
 - `Dockerfile`, `.github/workflows/package.yml`: the container image for amd64 and arm64, pushed to ghcr.io by
@@ -43,11 +44,11 @@ in the browser talks only to that backend at http://127.0.0.1:4280 and never see
    wiring); `config.rs` and `api.rs` know nothing about serving or the UI. No extra layers, DI containers
    (beyond what Angular itself requires), single-implementation traits/interfaces, databases or disk caches.
    Justify every new dependency. The whole codebase must stay readable in about 15 minutes; since the demo.html
-   redesign it is ~3,750 lines including tests (the plan aimed for ~1,300), so shrink rather than grow it.
+   redesign it is ~4,000 lines including tests (the plan aimed for ~1,300), so shrink rather than grow it.
    All CSS in `styles.css`. Animations are native (CSS plus `animate.enter`/`animate.leave`, not
    `@angular/animations`) and obey the `animations` config switch.
 
-Also keep: binding to 127.0.0.1 only (0.0.0.0 only in the `container` build), the Host-header guard (only 127.0.0.1:4280, localhost:4280 and config's `allowed_hosts`, which is for a reverse proxy), the `/api` path character check, descriptions
+Also keep: binding to 127.0.0.1 only (0.0.0.0 only in the `container` build), the Host-header guard (only 127.0.0.1:4280, localhost:4280 and config's `allowed_hosts`, which is for a reverse proxy), the `/api` path character check, hash routing (the server serves the UI only at `/`), descriptions
 rendering raw HTML as text and images as links, and `only_lists` enforced by the backend (browsing routes not
 registered; lists, tasks and comments outside it refused), never just hidden in the UI. Tests use fixtures, never the real ClickUp API (under `cfg(test)`,
 `api.rs`'s `BASE_URL` is a closed local port). Never commit

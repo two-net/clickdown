@@ -18,7 +18,7 @@ import { Frame, Kind, Navigator } from './navigator';
     } @else if (!f.items().length && f.kind !== 'task') {
       <div class="state"><p>{{ f.all().length ? 'Nothing here matches “' + f.query().trim() + '”. Esc clears the search.' : empty[f.kind] }}</p></div>
     } @else {
-      <div class="rows" role="listbox" tabindex="0" [id]="'v' + f.key + '-rows'" [attr.aria-label]="f.kind === 'task' ? 'Subtasks' : f.title"
+      <div class="rows" role="listbox" tabindex="0" [id]="'v' + f.key + '-rows'" [attr.aria-label]="f.kind === 'task' ? 'Subtasks' : f.name()"
            [attr.aria-activedescendant]="f.active()">
         @for (g of f.groups(); track $index; let gi = $index) {
           <div role="group" [attr.aria-label]="g.status ? g.label + ', ' + plural(g.items.length, 'task') : g.label">

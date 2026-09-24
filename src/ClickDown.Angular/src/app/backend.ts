@@ -9,7 +9,7 @@ export type LoadError =
   | { kind: 'unreachable' } // the ClickDown server itself isn't answering
   | { kind: 'other'; message: string };
 
-const DEFAULT_SETTINGS: Settings = { animations: true, only_lists: [] };
+export const DEFAULT_SETTINGS: Settings = { animations: true, only_lists: [] };
 // The system's reduced-motion setting turns animations off too. (Test browsers have no matchMedia.)
 const REDUCED_MOTION = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
@@ -18,6 +18,8 @@ const REDUCED_MOTION = window.matchMedia?.('(prefers-reduced-motion: reduce)').m
 export class Backend {
   private readonly http = inject(HttpClient);
   readonly settings = signal<Settings>(DEFAULT_SETTINGS);
+  /** Whether the server has sent the settings: loadSettings() keeps the defaults while it doesn't answer. */
+  readonly settingsKnown = computed(() => this.settings() !== DEFAULT_SETTINGS);
   /** Whether anything animates: config.toml allows it and the system doesn't ask for reduced motion. */
   readonly motion = computed(() => this.settings().animations && !REDUCED_MOTION);
   /** Seconds until rate-limited requests retry; 0 when not rate limited. Drives the countdowns. */

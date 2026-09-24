@@ -61,7 +61,7 @@ the part after `/li/` in its ClickUp URL (in ClickUp, right-click the list in th
 then opens on a short **Your lists** screen with just those lists. The backend enforces it: the Workspace, Space and
 Folder levels are switched off, and lists, tasks and comments from other lists are refused. An id that can't be
 loaded (a typo, a deleted list) gets its own row; open it to see why. After restarting ClickDown with a changed
-`only_lists`, press `r` in an open page to start over at the right screen.
+`only_lists`, press `r` in an open page to reload it with the new setting.
 
 This is a filter, not a security boundary. Whoever can edit `config.toml` can remove it, and can read the token,
 which has all of its owner's access. To really limit someone, invite them to ClickUp as a guest with access to
@@ -111,8 +111,8 @@ message with the full path of the file to edit, and exits. If ClickUp rejects th
 | Page Up / Page Down | move ten rows; in a task, scroll a screen |
 | Home / End | first or last row; in a task, its top or bottom |
 | Enter or → | open |
-| Esc | one step out: clear the search, then leave the search box, then back |
-| Backspace or ← | back |
+| Esc | one step out: clear the search, then leave the search box, then up a level |
+| Backspace or ← | up a level |
 | `/` | search this screen (not in a task); in the box, letters type, and ↑ / ↓, Page Up / Page Down and Enter still work on the rows |
 | `s` | in a list, sort its tasks the next way: ClickUp's order, due date, priority, name |
 | Tab | in a task, reach its subtasks (then ↑ / ↓ and Enter work on them) |
@@ -125,6 +125,12 @@ The rail on the left shows where you are, Workspace → Space → Folder → Lis
 it. The status bar at the bottom shows the keys, whether a request is under way or ClickUp can't be reached, and
 how many ClickUp requests are left this minute (from the rate-limit headers ClickUp sends with every answer;
 hidden in narrow windows).
+
+Every screen has its own address after the `#`, such as `http://127.0.0.1:4280/#/workspace/9/space/5/list/7`, so
+the browser's Back and Forward buttons, reloading and bookmarks all work. (Esc goes up a level; Back goes to the
+screen you saw before.) Opening an address loads every level on the way, so the rail is complete and going back is
+instant. An address that no longer fits, such as a list that has since moved into a folder, opens as far as it
+still does.
 
 Folders and lists that someone shared with you directly (ClickUp's **Shared with me**) appear after the Spaces
 in their Workspace, under *Shared with you*. You can open them even if you can't open the Space they live in.

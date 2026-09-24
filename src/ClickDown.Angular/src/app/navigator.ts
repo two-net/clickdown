@@ -1,4 +1,6 @@
-import { Injectable, Signal, computed, inject, linkedSignal, signal } from '@angular/core';
+import { Location } from '@angular/common';
+import { Injectable, Signal, WritableSignal, computed, inject, linkedSignal, signal } from '@angular/core';
+import { NavigationEnd, PRIMARY_OUTLET, Router } from '@angular/router';
 import { Backend, LoadError } from './backend';
 import { cap, matches, plural } from './format';
 import { Comment, CommentsPage, Folder, List, SharedHierarchy, Space, Status, Task, TaskDetail, TasksPage, Team } from './models';
@@ -7,7 +9,7 @@ export type Kind = 'lists' | 'workspaces' | 'spaces' | 'space' | 'folder' | 'lis
 
 /** One row; `open` is the kind of frame it opens, or 'more' for a list's next page of tasks. */
 export interface Item {
-  open: Kind | 'more'; id: string; name: string; shared?: boolean;
+  open: Kind | 'more'; id: string; name: string;
   color?: string | null; members?: number; statuses?: Status[]; // workspaces and spaces
   lists?: number | null; tasks?: number | null; // folders and lists
   task?: Task;
@@ -44,7 +46,9 @@ let lastKey = 0;
 
 /** One level of the descent. It keeps its own data, so going back is instant. */
 export class Frame {
-  readonly key = ++lastKey; // unique per push, so re-opening the same item still animates
+  readonly key = ++lastKey; // unique per frame, so re-opening the same item still animates
+  /** Its row's name. An address gives only the id, so until the frame above loads it's e.g. "List 7". */
+  readonly title: WritableSignal<string>;
   readonly all = signal<Group[]>([]); // every row loaded, before the search and the sort
   readonly query = signal(''); // the search box's text
   /** What's on screen: the rows that match the search, a list's tasks sorted within each status. "Load more" stays: the next page may match. */
@@ -78,6 +82,8 @@ export class Frame {
     return item ? this.optionId(item) : null;
   });
   readonly task = signal<TaskDetail | null>(null);
+  /** What the head, the rail and the tab call it. */
+  readonly name = computed(() => this.task()?.name ?? this.title());
   readonly comments = signal<Comment[] | null>(null); // newest first, as ClickUp pages them; null while loading
   readonly commentsError = signal<LoadError | null>(null);
   readonly olderComments = signal(false);
@@ -92,11 +98,14 @@ export class Frame {
   page = 0;
   lastPage = true;
   scrollTop = 0;
+  opened?: Frame; // what an address opened below it before its rows came: they name it, and select its row
   generation = 0; // bumped by every load, so answers to an older load are dropped
   commentsGeneration = 0;
 
-  constructor(readonly kind: Kind, readonly id: string, readonly title: string, readonly shared: boolean,
-              readonly sort: Signal<number>) {} // the Navigator's, an index into SORTS
+  constructor(readonly kind: Kind, readonly id: string, title: string, readonly shared: boolean,
+              readonly sort: Signal<number>) { // the Navigator's, an index into SORTS
+    this.title = signal(title);
+  }
 
   /** The search box's text. Typing selects the first match; emptying the box keeps the row you're on, if any matched. */
   search(query: string) {
@@ -122,7 +131,7 @@ export class Frame {
       case 'workspaces':
         return plural(rows.length, 'workspace');
       case 'spaces': {
-        const shared = rows.filter((i) => i.shared).length;
+        const shared = rows.length - count('space'); // folders and lists shared with you
         const spaces = rows.length - shared;
         if (!shared) return plural(spaces, 'space');
         return spaces ? `${plural(spaces, 'space')}, ${shared} shared with you` : `${shared} shared with you`;
@@ -155,9 +164,8 @@ export function describe(error: LoadError): string {
 const one = (items: Item[]): Group[] => (items.length ? [{ label: null, items }] : []);
 const teamRow = (t: Team): Item => ({ open: 'spaces', id: t.id, name: t.name, color: t.color, members: t.member_count });
 const spaceRow = (s: Space): Item => ({ open: 'space', id: s.id, name: s.name, color: s.color, statuses: s.statuses });
-const folderRow = (shared: boolean) => (f: Folder): Item =>
-  ({ open: 'folder', id: f.id, name: f.name, lists: f.list_count, tasks: f.task_count, shared });
-const listRow = (shared: boolean) => (l: List): Item => ({ open: 'list', id: l.id, name: l.name, tasks: l.task_count, shared });
+const folderRow = (f: Folder): Item => ({ open: 'folder', id: f.id, name: f.name, lists: f.list_count, tasks: f.task_count });
+const listRow = (l: List): Item => ({ open: 'list', id: l.id, name: l.name, tasks: l.task_count });
 const taskRow = (t: Task): Item => ({ open: 'task', id: t.id, name: t.name, task: t });
 
 /** A list's tasks under their statuses, in the workflow's order, then the "Load more" row. */
@@ -184,10 +192,22 @@ const LEVELS: { name: string; kind: Kind }[] = [
 /** The depth at which each kind of frame asks you to choose: a space's view offers folders and lists, and so on. */
 const DEPTH: Record<Kind, number> = { workspaces: 0, spaces: 1, space: 2, folder: 3, lists: 3, list: 4, task: 4 };
 const depthColor = (d: number) => `var(--d${Math.min(d, 4) + 1})`;
+/** What each kind of frame's rows open: the only steps an address may take. */
+const OPENS: Record<Kind, Kind[]> = {
+  lists: ['list'], workspaces: ['spaces'], spaces: ['space', 'folder', 'list'], space: ['folder', 'list'],
+  folder: ['list'], list: ['task'], task: ['task'],
+};
+/** The rail's name for a kind: "List". The address uses it too, in lowercase. */
+const levelName = (kind: Kind) => LEVELS.find((l) => l.kind === kind)?.name ?? '';
+type Step = Pick<Frame, 'kind' | 'id'>;
+/** Where frames are, after the # in the address bar: /workspace/9/space/5/list/7/task/86abc. The root adds nothing. */
+const address = (steps: Step[]) => '/' + steps.slice(1).map((s) => `${levelName(s.kind).toLowerCase()}/${s.id}`).join('/');
 
 @Injectable({ providedIn: 'root' })
 export class Navigator {
   private readonly backend = inject(Backend);
+  private readonly router = inject(Router);
+  private readonly location = inject(Location);
   readonly stack = signal<Frame[]>([]);
   /** The top frame as a one-element array, so `@for` animates frames in and out. */
   readonly top = computed(() => this.stack().slice(-1));
@@ -215,7 +235,7 @@ export class Navigator {
       const target = kind === 'task' ? (top.kind === 'task' ? stack.length - 1 : -1) : at(kind);
       const frame = stack[target];
       const skipped = !frame && ((d === 1 && !!shared) || (d === 2 && at('list') >= 0));
-      const value = frame ? (frame.task()?.name ?? frame.title)
+      const value = frame ? frame.name()
         : !skipped ? null : d === 1 ? 'Shared with you' : shared?.kind === 'list' ? null : 'No folder';
       const reached = !skipped && value !== null;
       const label = skipped
@@ -245,25 +265,28 @@ export class Navigator {
     };
   });
 
-  /** Starts over at the root: the lists in only_lists (config.toml) if set, else the workspaces. */
+  constructor() {
+    // Back, Forward, a bookmark or an edited address: the frames follow.
+    this.router.events.subscribe((e) => {
+      if (e instanceof NavigationEnd) this.follow(e.urlAfterRedirects);
+    });
+  }
+
+  /** Starts over at the address: the settings or the token may have changed, so every frame loads again. */
   start() {
     this.stack.set([]);
     this.depthMove = { from: -1, to: -1 };
-    if (this.backend.settings().only_lists.length) this.push('lists', '', 'Your lists');
-    else this.push('workspaces', '', 'Workspaces');
+    this.follow(this.location.path() || '/'); // the address bar's: at boot the router hasn't read it yet
   }
 
-  push(kind: Kind, id: string, title: string, shared = false) {
-    const frame = new Frame(kind, id, title, shared, this.sort);
-    this.back.set(false);
-    this.stack.update((s) => [...s, frame]);
-    void this.load(frame);
+  /** Opens a row, as a new entry in the browser's history. */
+  push(kind: Kind, id: string) {
+    this.go(address([...this.stack(), { kind, id }]));
   }
 
   popTo(index: number) {
     if (index < 0 || index >= this.stack().length - 1) return;
-    this.back.set(true);
-    this.stack.update((s) => s.slice(0, index + 1));
+    this.go(address(this.stack().slice(0, index + 1)));
   }
 
   pop() {
@@ -274,7 +297,7 @@ export class Navigator {
   activate(frame: Frame) {
     const item = frame.ready() ? frame.items()[frame.highlight()] : undefined;
     if (item?.open === 'more') void this.loadMore(frame);
-    else if (item) this.push(item.open, item.id, item.name, item.shared);
+    else if (item) this.push(item.open, item.id);
   }
 
   /** A click on row `index`. A view on its way out ignores clicks. */
@@ -304,6 +327,12 @@ export class Navigator {
       apply();
       frame.ready.set(true);
       frame.error.set(null); // the highlight stays on its row by itself
+      const { opened } = frame; // by an address, maybe gone back from since
+      frame.opened = undefined;
+      const stack = this.stack();
+      if (opened && !this.place(frame, opened) && stack.includes(opened)) { // it isn't here: the address ends above it
+        this.go(address(stack.slice(0, stack.indexOf(opened))), true);
+      }
     } catch (e) {
       if (generation === frame.generation) frame.error.set(e as LoadError);
     } finally {
@@ -379,7 +408,7 @@ export class Navigator {
     const stack = this.stack();
     const parent = stack[stack.indexOf(frame) - 1];
     const known = parent?.kind === 'task' && parent.id === task.parent;
-    return `Subtask of ${known ? (parent.task()?.name ?? parent.title) : 'another task'}`;
+    return `Subtask of ${known ? parent.name() : 'another task'}`;
   }
 
   /** Shows a short message at the bottom; screen readers announce it too. */
@@ -387,6 +416,66 @@ export class Navigator {
     this.toast.set({ text, shown: true });
     clearTimeout(this.toastTimer);
     this.toastTimer = setTimeout(() => this.toast.update((t) => ({ ...t, shown: false })), 3600);
+  }
+
+  /** The frames move at once; the address bar and the history catch up. */
+  private go(url: string, replaceUrl = false) {
+    this.follow(url);
+    void this.router.navigateByUrl(url, { replaceUrl });
+  }
+
+  /**
+   * Shows what an address asks for: the root (the lists in only_lists in config.toml if set, else the
+   * workspaces), then each step down. Frames already open on the way stay as they are; the others open and
+   * load, the one on screen first. A step no row could take ends the descent, and the address bar then says
+   * where: a level that doesn't follow the one above at once, and a row the level above doesn't have (moved,
+   * archived, mistyped) once its rows arrive.
+   */
+  private follow(url: string) {
+    const onlyLists = this.backend.settings().only_lists.length > 0;
+    const want: Step[] = [{ kind: onlyLists ? 'lists' : 'workspaces', id: '' }];
+    const segments = this.router.parseUrl(url).root.children[PRIMARY_OUTLET]?.segments.map((s) => s.path) ?? [];
+    for (let i = 0; i + 1 < segments.length; i += 2) {
+      const kind = OPENS[want[want.length - 1].kind].find((k) => levelName(k).toLowerCase() === segments[i]);
+      if (!kind || !/^[\w-]+$/.test(segments[i + 1])) break; // the server's /api paths allow no more
+      want.push({ kind, id: segments[i + 1] });
+    }
+    const stack = this.stack();
+    let kept = 0;
+    while (kept < want.length && stack[kept]?.kind === want[kept].kind && stack[kept]?.id === want[kept].id) kept++;
+    if (kept < want.length || kept < stack.length) {
+      const frames = stack.slice(0, kept);
+      for (const { kind, id } of want.slice(kept)) {
+        const parent = frames.at(-1);
+        const title = parent ? `${levelName(kind)} ${id}` : onlyLists ? 'Your lists' : 'Workspaces';
+        const shared = parent?.kind === 'spaces' && kind !== 'space'; // under "Shared with you"
+        const frame = new Frame(kind, id, title, shared, this.sort);
+        if (parent && !(parent.ready() && this.place(parent, frame))) {
+          parent.opened = frame;
+          if (parent.ready()) void this.load(parent); // its rows may be older than the address: they're asked again
+        }
+        frames.push(frame);
+      }
+      this.back.set(kept === want.length);
+      this.stack.set(frames);
+      // The one on screen first: the browser opens only 6 connections to the server, and the rest wait.
+      for (const frame of frames.slice(kept).reverse()) void this.load(frame);
+    }
+    // Settings the server hasn't sent may be wrong about only_lists, so the address waits for them (see r).
+    if (address(want) !== url && this.backend.settingsKnown()) void this.router.navigateByUrl(address(want), { replaceUrl: true });
+  }
+
+  /**
+   * Names a frame after its row in the frame above and selects the row, so going back lands on it. False when
+   * the row isn't there, unless it's a task: a list's rows are its open tasks, a page at a time.
+   */
+  private place(parent: Frame, child: Frame): boolean {
+    const row = parent.all().flatMap((g) => g.items).find((i) => i.open === child.kind && i.id === child.id);
+    if (!row) return child.kind === 'task';
+    child.title.set(row.name);
+    const at = parent.items().indexOf(row); // -1 when a search hides it
+    if (at >= 0) parent.highlight.set(at);
+    return true;
   }
 
   /** Reads what the frame shows and returns how to put it in place. */
@@ -401,7 +490,7 @@ export class Navigator {
         const failed = lists.filter((l) => l.status === 'rejected');
         if (failed.length === ids.length && failed[0]) throw failed[0].reason; // e.g. the server is down
         return show(one(lists.map((l, i): Item => l.status === 'fulfilled'
-          ? listRow(false)(l.value)
+          ? listRow(l.value)
           : { open: 'list', id: ids[i], name: `List ${ids[i]} (couldn’t be loaded)` })));
       }
       case 'workspaces': {
@@ -415,7 +504,7 @@ export class Navigator {
           api<{ spaces: Space[] }>(`team/${f.id}/space`),
           api<SharedHierarchy>(`team/${f.id}/shared`),
         ]);
-        const sharedRows = [...shared.folders.map(folderRow(true)), ...shared.lists.map(listRow(true))];
+        const sharedRows = [...shared.folders.map(folderRow), ...shared.lists.map(listRow)];
         return show([{ label: null, items: spaces.map(spaceRow) }, { label: 'Shared with you', items: sharedRows }]
           .filter((g) => g.items.length));
       }
@@ -424,12 +513,12 @@ export class Navigator {
           api<{ folders: Folder[] }>(`space/${f.id}/folder`),
           api<{ lists: List[] }>(`space/${f.id}/list`),
         ]);
-        return show([{ label: 'Folders', items: folders.map(folderRow(false)) }, { label: 'Lists', items: lists.map(listRow(false)) }]
+        return show([{ label: 'Folders', items: folders.map(folderRow) }, { label: 'Lists', items: lists.map(listRow) }]
           .filter((g) => g.items.length));
       }
       case 'folder': {
         const { lists } = await api<{ lists: List[] }>(`folder/${f.id}/list`);
-        return show(one(lists.map(listRow(false))));
+        return show(one(lists.map(listRow)));
       }
       case 'list': {
         const { tasks, last_page } = await api<TasksPage>(`list/${f.id}/task?page=0`);

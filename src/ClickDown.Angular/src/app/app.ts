@@ -157,11 +157,15 @@ export class App {
     const checked = this.tokenChecked;
     if (!checked) void this.checkToken();
     const onlyLists = this.backend.settings().only_lists.join();
+    const known = this.backend.settingsKnown();
     await this.backend.loadSettings();
     const changed = this.backend.settings().only_lists.join() !== onlyLists;
     if (changed && checked) void this.checkToken();
-    if (changed) this.nav.start();
-    else if (frame === this.nav.top()[0]) void this.nav.load(frame); // unless the user moved on meanwhile
+    if (changed || (!known && this.backend.settingsKnown())) this.nav.start(); // the address is read anew
+    else if (frame === this.nav.top()[0]) { // unless the user moved on meanwhile
+      // The levels above it that an address opened but that didn't load retry too, the one on screen first.
+      for (const f of [...this.nav.stack()].reverse()) if (f === frame || (!f.ready() && f.error())) void this.nav.load(f);
+    }
   }
 
   protected errorTitle(error: LoadError): string {
@@ -191,11 +195,14 @@ export class App {
     const view = document.querySelector<HTMLElement>(`.view[data-key="${frame.key}"]`);
     const body = view?.querySelector<HTMLElement>('.view-body');
     if (!view || !body) return;
-    document.title = `${frame.task()?.name ?? frame.title} – ClickDown`;
+    document.title = `${frame.name()} – ClickDown`;
     const appeared = frame.key !== this.shown;
     if (appeared) {
       this.shown = frame.key;
+      this.closeHelp(); // Back or Forward while the keys were shown: the new view gets the focus
       body.scrollTop = frame.scrollTop;
+      // A level an address opened was never on screen, so its selected row can be out of view.
+      if (frame.kind !== 'task') view.querySelector('.rows [aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest' });
       // Kept for coming back. A plain listener: a template (scroll) binding would re-check every row on each frame.
       body.addEventListener('scroll', () => (frame.scrollTop = body.scrollTop), { passive: true });
     }

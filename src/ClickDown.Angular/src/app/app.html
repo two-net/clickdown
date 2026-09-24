@@ -62,7 +62,7 @@
           <section class="view" [attr.data-key]="f.key" [attr.data-kind]="f.kind" [attr.aria-labelledby]="'v' + f.key + '-title'"
                    animate.enter="view-enter" animate.leave="view-leave">
             <header class="view-head">
-              <h1 [id]="'v' + f.key + '-title'">{{ f.task()?.name ?? f.title }}</h1>
+              <h1 [id]="'v' + f.key + '-title'">{{ f.name() }}</h1>
               <p class="view-sub" [id]="'v' + f.key + '-sub'">
                 @if (f.task(); as t) {
                   <span class="sub-text">
@@ -82,7 +82,7 @@
                   <input #box class="find" type="search" role="combobox" aria-autocomplete="list" aria-keyshortcuts="/"
                          autocomplete="off" autocapitalize="off" spellcheck="false"
                          [placeholder]="f.kind === 'list' ? 'Search by name, ID, tag or person' : 'Search by name'"
-                         [attr.aria-label]="'Search ' + f.title" [attr.aria-describedby]="'v' + f.key + '-sub'"
+                         [attr.aria-label]="'Search ' + f.name()" [attr.aria-describedby]="'v' + f.key + '-sub'"
                          [attr.aria-expanded]="f.items().length > 0" [attr.aria-controls]="f.items().length ? 'v' + f.key + '-rows' : null"
                          [attr.aria-activedescendant]="f.active()" [value]="f.query()" (input)="f.search(box.value)">
                   @if (f.kind === 'list') {

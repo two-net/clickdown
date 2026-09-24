@@ -1,8 +1,12 @@
+import { HashLocationStrategy, Location, LocationStrategy } from '@angular/common';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideLocationMocks } from '@angular/common/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { Router, provideRouter } from '@angular/router';
 import { App } from './app';
-import { Backend } from './backend';
+import { appConfig, routes } from './app.config';
+import { Backend, DEFAULT_SETTINGS } from './backend';
 
 const ada = { user: { id: 1, username: 'Ada', email: null, color: '#7b68ee', initials: 'A' } };
 const rejected = { error: 'unauthorized', message: 'Token invalid', config_path: '/x/config.toml' };
@@ -15,7 +19,9 @@ describe('App', () => {
   let http: HttpTestingController;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter(routes), provideLocationMocks()],
+    });
     http = TestBed.inject(HttpTestingController);
     TestBed.inject(Backend).settings.set({ animations: false, only_lists: [] }); // no splash to skip
   });
@@ -32,9 +38,19 @@ describe('App', () => {
   const text = (fixture: ComponentFixture<App>) => (fixture.nativeElement as HTMLElement).textContent ?? '';
   const names = (el: HTMLElement) => [...el.querySelectorAll('.row-name')].map((n) => n.textContent);
   const selected = (el: HTMLElement) => el.querySelector('[aria-selected="true"] .row-name')?.textContent;
+  const rail = (el: HTMLElement) => [...el.querySelectorAll('.lvl-value')].map((v) => v.textContent);
   async function settle(fixture: ComponentFixture<App>) {
     await new Promise((done) => setTimeout(done));
     await fixture.whenStable();
+  }
+
+  /** Boots at an address, as the browser does: the app, then the router's first navigation, which starts it listening to Back and Forward. */
+  async function boot(address: string) {
+    TestBed.inject(Location).go(address);
+    const fixture = TestBed.createComponent(App);
+    TestBed.inject(Router).initialNavigation();
+    await settle(fixture);
+    return fixture;
   }
 
   /** Boots and walks Acme → Eng → Bugs, a list that isn't in a folder. */
@@ -230,6 +246,7 @@ describe('App', () => {
     expect(page.indexOf('First')).toBeLessThan(page.indexOf('Second'));
     expect(el.querySelector('.md .check.done')?.getAttribute('aria-label')).toBe('Done'); // kept by the sanitizer
     expect(el.querySelectorAll('.lvl.stem-on').length).toBe(1);
+    expect(TestBed.inject(Location).path()).toBe('/list/7/task/a');
 
     [...el.querySelectorAll<HTMLButtonElement>('.comments button')].find((b) => b.textContent?.includes('Load older'))?.click();
     http.expectOne(`/api/task/a/comment?start=${now - 7_200_000}&start_id=c1`).flush({
@@ -249,6 +266,175 @@ describe('App', () => {
     http.expectOne('/api/task/s').flush({ ...task('s', 'to do', 0, { parent: 'a' }), subtasks: [], description_html: '' });
     await settle(fixture);
     expect(text(fixture)).toContain('Subtask of Task a');
+    expect(TestBed.inject(Location).path()).toBe('/list/7/task/a/task/s');
+  });
+
+  it('opens at the address, names each level from the one above, and follows Back and Forward', async () => {
+    const crash = task('a', 'to do', 0, { name: 'Crash on save' });
+    const openTask = () => {
+      http.expectOne('/api/task/a/comment').flush({ comments: [], has_more: false });
+      http.expectOne('/api/task/a').flush({ ...crash, subtasks: [], description_html: '' });
+    };
+    const fixture = await boot('/workspace/9/space/5/list/7/task/a'); // a bookmark, or a reload
+    http.expectOne('/api/user').flush(ada);
+    openTask();
+    await settle(fixture);
+    const el = fixture.nativeElement as HTMLElement;
+    const location = TestBed.inject(Location);
+    const back = () => el.querySelector('.stage')!.classList.contains('back'); // the slide's direction
+    expect(document.title).toBe('Crash on save – ClickDown'); // the task names itself
+    expect(rail(el)).toEqual(['Workspace 9', 'Space 5', 'No folder', 'List 7', 'Crash on save']);
+
+    press('Escape'); // before the levels above answer
+    await settle(fixture);
+    expect(back()).toBe(true);
+    expect(location.path()).toBe('/workspace/9/space/5/list/7');
+    http.expectOne('/api/team').flush({ teams: [{ id: '9', name: 'Acme', color: null, member_count: 3 }] });
+    http.expectOne('/api/team/9/space').flush({ spaces: [{ id: '5', name: 'Eng', color: null, statuses: [] }] });
+    http.expectOne('/api/team/9/shared').flush({ shared: { folders: [], lists: [] } });
+    http.expectOne('/api/space/5/folder').flush({ folders: [] });
+    http.expectOne('/api/space/5/list').flush({ lists: [{ id: '7', name: 'Bugs', task_count: 2 }] });
+    http.expectOne('/api/list/7/task?page=0').flush({ tasks: [task('z', 'to do', 0), crash], last_page: true });
+    await settle(fixture);
+    expect(rail(el)).toEqual(['Acme', 'Eng', 'No folder', 'Bugs']);
+    expect(document.title).toBe('Bugs – ClickDown');
+    expect(selected(el)).toBe('Crash on save'); // the row it came from
+
+    location.back(); // the task again, loaded afresh
+    await settle(fixture);
+    openTask();
+    await settle(fixture);
+    expect(document.title).toBe('Crash on save – ClickDown');
+    expect(back()).toBe(false); // Back went down a level
+
+    location.forward(); // Bugs kept its rows: afterEach's verify()
+    await settle(fixture);
+    expect(document.title).toBe('Bugs – ClickDown');
+    expect(back()).toBe(true);
+    expect(selected(el)).toBe('Crash on save');
+
+    press('Enter');
+    openTask();
+    await settle(fixture);
+    expect(location.path()).toBe('/workspace/9/space/5/list/7/task/a');
+    expect(back()).toBe(false);
+    el.querySelector<HTMLButtonElement>('.lvl-btn')!.click(); // the rail's Workspace
+    await settle(fixture);
+    expect(location.path()).toBe('/workspace/9');
+    expect(back()).toBe(true);
+  });
+
+  it('opens a folder shared with you from its address, and ends an address where it stops fitting', async () => {
+    const fixture = await boot('/workspace/9/folder/3/list/4'); // list 4 has moved out of the folder since
+    const launch = { id: '3', name: 'Launch', task_count: null, list_count: null };
+    http.expectOne('/api/user').flush(ada);
+    http.expectOne('/api/team').flush({ teams: [{ id: '9', name: 'Acme', color: null, member_count: 3 }] });
+    http.expectOne('/api/team/9/space').flush({ spaces: [] });
+    http.expectOne('/api/team/9/shared').flush({ shared: { folders: [launch], lists: [] } });
+    http.expectOne('/api/folder/3/list').flush({ lists: [{ id: '8', name: 'Press', task_count: 0 }] });
+    http.expectOne('/api/list/4/task?page=0').flush({ tasks: [], last_page: true });
+    await settle(fixture);
+    const el = fixture.nativeElement as HTMLElement;
+    const location = TestBed.inject(Location);
+    const router = TestBed.inject(Router);
+    expect(location.path()).toBe('/workspace/9/folder/3');
+    expect(rail(el)).toEqual(['Acme', 'Shared with you', 'Launch']);
+
+    await router.navigateByUrl('/workspace/9/folder/3/list/4'); // back in the folder since: its rows are asked again
+    http.expectOne('/api/folder/3/list').flush({ lists: [{ id: '8', name: 'Press', task_count: 0 }, { id: '4', name: 'Notes', task_count: 0 }] });
+    http.expectOne('/api/list/4/task?page=0').flush({ tasks: [], last_page: true });
+    await settle(fixture);
+    expect(location.path()).toBe('/workspace/9/folder/3/list/4');
+    expect(rail(el)).toEqual(['Acme', 'Shared with you', 'Launch', 'Notes']);
+    await router.navigateByUrl('/workspace/9/folder/3/task/x'); // a folder doesn't show tasks
+    await settle(fixture);
+    expect(location.path()).toBe('/workspace/9/folder/3');
+    await router.navigateByUrl('/workspace/9/space/5.x'); // an id the server would refuse
+    await settle(fixture);
+    expect(location.path()).toBe('/workspace/9');
+    await router.navigateByUrl('/list/7'); // only with only_lists
+    await settle(fixture);
+    expect(location.path()).toBe('/');
+    expect(document.title).toBe('Workspaces – ClickDown');
+
+    location.back(); // each wrong address was replaced by where it ended, so Back never lands on one
+    await settle(fixture);
+    http.expectOne('/api/team/9/space').flush({ spaces: [] });
+    http.expectOne('/api/team/9/shared').flush({ shared: { folders: [launch], lists: [] } });
+    await settle(fixture);
+    expect(location.path()).toBe('/workspace/9');
+  });
+
+  it('keeps a bookmark into only_lists while the server is down, and opens it on r', async () => {
+    TestBed.inject(Backend).settings.set(DEFAULT_SETTINGS); // /api/settings didn't answer at boot
+    const fixture = await boot('/list/7/task/a');
+    http.expectOne('/api/user').flush('proxy error', { status: 500, statusText: 'Internal Server Error' });
+    http.expectOne('/api/team').flush('proxy error', { status: 500, statusText: 'Internal Server Error' });
+    await settle(fixture);
+    const location = TestBed.inject(Location);
+    expect(location.path()).toBe('/list/7/task/a');
+
+    press('Shift'); // past the splash: the defaults animate
+    press('r');
+    http.expectOne('/api/user').flush(ada);
+    http.expectOne('/api/settings').flush({ animations: false, only_lists: ['7'] });
+    await settle(fixture);
+    http.expectOne('/api/list/7').flush({ id: '7', name: 'Bugs', task_count: 1 });
+    http.expectOne('/api/list/7/task?page=0').flush({ tasks: [task('a', 'to do', 0)], last_page: true });
+    http.expectOne('/api/task/a/comment').flush({ comments: [], has_more: false });
+    http.expectOne('/api/task/a').flush({ ...task('a', 'to do', 0, { name: 'Crash on save' }), subtasks: [], description_html: '' });
+    await settle(fixture);
+    expect(location.path()).toBe('/list/7/task/a');
+    expect(document.title).toBe('Crash on save – ClickDown');
+    expect(rail(fixture.nativeElement)).toEqual(['Bugs', 'Crash on save']);
+  });
+
+  it('corrects a wrong address on r once the server has sent the settings', async () => {
+    TestBed.inject(Backend).settings.set(DEFAULT_SETTINGS); // /api/settings didn't answer at boot
+    const fixture = await boot('/nonsense');
+    http.expectOne('/api/user').flush(ada);
+    http.expectOne('/api/team').flush('proxy error', { status: 500, statusText: 'Internal Server Error' });
+    await settle(fixture);
+    const location = TestBed.inject(Location);
+    expect(location.path()).toBe('/nonsense'); // it could be one of only_lists'
+
+    press('Shift'); // past the splash: the defaults animate
+    press('r');
+    http.expectOne('/api/settings').flush({ animations: false, only_lists: [] });
+    await settle(fixture);
+    http.expectOne('/api/team').flush({ teams: [] });
+    await settle(fixture);
+    expect(location.path()).toBe('/');
+  });
+
+  it('retries on r the levels above that an address opened but that didn’t load', async () => {
+    const fixture = await boot('/workspace/9/space/5');
+    http.expectOne('/api/user').flush(ada);
+    http.expectOne('/api/team').flush({ error: 'clickup', status: 500, message: 'Internal error' }, { status: 502, statusText: 'Bad Gateway' });
+    http.expectOne('/api/team/9/space').flush({ spaces: [{ id: '5', name: 'Eng', color: null, statuses: [] }] });
+    http.expectOne('/api/team/9/shared').flush({ shared: { folders: [], lists: [] } });
+    http.expectOne('/api/space/5/folder').flush({ folders: [] });
+    http.expectOne('/api/space/5/list').flush({ lists: [] });
+    await settle(fixture);
+    const el = fixture.nativeElement as HTMLElement;
+    expect(rail(el)).toEqual(['Workspace 9', 'Eng']);
+
+    press('r');
+    http.expectOne('/api/settings').flush({ animations: false, only_lists: [] });
+    await settle(fixture);
+    http.expectOne('/api/team').flush({ teams: [{ id: '9', name: 'Acme', color: null, member_count: 3 }] });
+    http.expectOne('/api/space/5/folder').flush({ folders: [] });
+    http.expectOne('/api/space/5/list').flush({ lists: [] });
+    await settle(fixture);
+    expect(rail(el)).toEqual(['Acme', 'Eng']);
+  });
+
+  it('keeps where you are after the #, so the server only ever serves /', () => {
+    TestBed.resetTestingModule(); // the app's own providers, not the mocks
+    TestBed.configureTestingModule({ providers: [...appConfig.providers, provideHttpClient(), provideHttpClientTesting()] });
+    http = TestBed.inject(HttpTestingController);
+    http.expectOne('/api/settings').flush({ animations: false, only_lists: [] });
+    expect(TestBed.inject(LocationStrategy)).toBeInstanceOf(HashLocationStrategy);
   });
 
   it('searches a list as you type, leaves the typing keys to the box, and Esc steps back out', async () => {
