@@ -114,6 +114,7 @@ message with the full path of the file to edit, and exits. If ClickUp rejects th
 | Esc | one step out: clear the search, then leave the search box, then up a level |
 | Backspace or ← | up a level |
 | `/` | search this screen (not in a task); in the box, letters type, and ↑ / ↓, Page Up / Page Down and Enter still work on the rows |
+| `[` / `]` | in a list, the previous or next status tab (← / → too, while a tab has focus) |
 | `s` | in a list, sort its tasks the next way: ClickUp's order, due date, priority, name |
 | Tab | in a task, reach its subtasks (then ↑ / ↓ and Enter work on them) |
 | `r` | refresh |
@@ -135,8 +136,9 @@ still does.
 Folders and lists that someone shared with you directly (ClickUp's **Shared with me**) appear after the Spaces
 in their Workspace, under *Shared with you*. You can open them even if you can't open the Space they live in.
 
-Lists show their open tasks grouped by status, 100 at a time ("Load more tasks"), and leave out closed tasks and
-subtasks, as ClickUp does by default; a task's subtasks appear in its detail view. Comments read oldest first
+Lists show their open tasks with one tab per status, in the workflow's order; a list remembers its tab while you
+look at a task. They load 100 at a time ("Load more tasks"), and leave out closed tasks and subtasks, as ClickUp
+does by default; a task's subtasks appear in its detail view. Comments read oldest first
 and load 25 at a time ("Load older comments"). A task's attachments, its own and those in its comments (which
 also appear under their comment), are links that open the file from ClickUp in a new tab; if your Workspace
 turned on private attachment links, opening one needs you signed in to ClickUp in the same browser. If ClickUp
@@ -144,7 +146,8 @@ rate-limits you, a banner and the status bar count down and ClickDown retries by
 
 Search (`/`, or the box under a screen's title) narrows its rows as you type. It ignores case and accents, and
 every word you type must appear: in a list it looks at each task's name, ID, tags and assignees; elsewhere, at
-names. ClickUp's API can't search text, so ClickDown searches what it has loaded; in a long list, "Load more
+names. In a list, the tabs show only the statuses with matches, and how many. ClickUp's API can't search text, so
+ClickDown searches what it has loaded; in a long list, "Load more
 tasks" stays at the bottom so you can search the next 100 too. A search stays with its screen, so it's still
 there when you come back from a task.
 

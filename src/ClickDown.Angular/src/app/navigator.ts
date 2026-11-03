@@ -17,6 +17,8 @@ export interface Item {
 
 /** Rows under one heading: a status in a list, "Folders" in a space, or no heading at all. */
 export interface Group { label: string | null; status?: Status; items: Item[] }
+/** A status's group in a list, shown as a tab of its own. */
+export type Tab = Group & { status: Status };
 
 /** One step of the rail. `d` is its depth, from 0 (Workspace) to 4 (Task). */
 export interface Level {
@@ -51,8 +53,8 @@ export class Frame {
   readonly title: WritableSignal<string>;
   readonly all = signal<Group[]>([]); // every row loaded, before the search and the sort
   readonly query = signal(''); // the search box's text
-  /** What's on screen: the rows that match the search, a list's tasks sorted within each status. "Load more" stays: the next page may match. */
-  readonly groups = computed(() => {
+  /** The rows that match the search, a list's tasks sorted within each status. "Load more" stays: the next page may match. */
+  readonly found = computed(() => {
     const query = this.query().trim();
     const compare = this.kind === 'list' ? SORTS[this.sort()].compare : undefined;
     if (!query && !compare) return this.all();
@@ -63,6 +65,17 @@ export class Frame {
       })
       .filter((g) => g.items.length);
   });
+  /** A list's statuses that have rows, one tab each, in the workflow's order. */
+  readonly tabs = computed(() => this.found().filter((g): g is Tab => !!g.status));
+  /** The open tab's status. It stays open while it has rows (a refresh, a page, a search), else the first one opens. */
+  readonly tab = linkedSignal<Tab[], string>({
+    source: this.tabs,
+    computation: (tabs, prev) =>
+      prev && (!tabs.length || tabs.some((g) => g.status.status === prev.value)) ? prev.value : (tabs[0]?.status.status ?? ''),
+  });
+  readonly tabAt = computed(() => this.tabs().findIndex((g) => g.status.status === this.tab()));
+  /** What's on screen: in a list the open tab's tasks, then "Load more"; elsewhere every group. */
+  readonly groups = computed(() => this.found().filter((g) => !g.status || g.status.status === this.tab()));
   readonly items = computed(() => this.groups().flatMap((g) => g.items)); // what ↑/↓ move through
   readonly ready = signal(false); // data arrived at least once
   readonly busy = signal<'Refreshing' | 'Loading more' | null>(null);
@@ -91,7 +104,7 @@ export class Frame {
   readonly summary = computed(() => {
     const all = this.summarize();
     if (!this.query().trim() || !this.all().length) return all;
-    const found = this.items().filter((i) => i.open !== 'more').length;
+    const found = this.found().flatMap((g) => g.items).filter((i) => i.open !== 'more').length; // in every tab
     return `${found ? plural(found, 'match', 'matches') : 'No matches'} among ${all}`;
   });
   tasks: Task[] = []; // a list's tasks, every page so far
@@ -122,6 +135,14 @@ export class Frame {
   move(by: number) {
     if (!this.ready()) return;
     this.highlight.update((h) => Math.max(0, Math.min(this.items().length - 1, h + by)));
+  }
+
+  /** Opens the status tab at `index` in tabs(), its first row selected. The open one keeps its selection. */
+  showTab(index: number) {
+    const tab = this.tabs()[index];
+    if (!tab || tab.status.status === this.tab()) return;
+    this.tab.set(tab.status.status);
+    this.highlight.set(0);
   }
 
   private summarize(): string {
@@ -356,11 +377,14 @@ export class Navigator {
       frame.lastPage = last_page;
       frame.all.set(byStatus(frame.tasks, last_page));
       const ids = new Set(fresh.map((t) => t.id));
-      const shown = frame.items().filter((i) => ids.has(i.id)); // in screen order: searched and sorted
+      const shown = frame.items().filter((i) => ids.has(i.id)); // in screen order: in the open tab, searched and sorted
       if (shown[0]) frame.highlight.set(frame.items().indexOf(shown[0])); // none shown: the selection stays where it is
-      const matching = frame.query().trim() ? `, ${shown.length || 'none'} matching the search` : '';
+      const found = frame.found().flatMap((g) => g.items).filter((i) => ids.has(i.id)).length; // in every tab
+      const where = [frame.query().trim() ? 'matching the search' : '', shown.length < found ? `in ${frame.tabs()[frame.tabAt()]?.label}` : '']
+        .filter(Boolean).join(' ');
       if (this.stack().includes(frame)) {
-        this.say(`Loaded ${plural(fresh.length, 'more task')}${matching}${last_page ? '. That’s all of them.' : '.'}`);
+        const which = where ? `, ${shown.length || 'none'} ${where}` : '';
+        this.say(`Loaded ${plural(fresh.length, 'more task')}${which}${last_page ? '. That’s all of them.' : '.'}`);
       }
     } catch (e) {
       if (generation === frame.generation && this.stack().includes(frame)) {
@@ -473,6 +497,7 @@ export class Navigator {
     const row = parent.all().flatMap((g) => g.items).find((i) => i.open === child.kind && i.id === child.id);
     if (!row) return child.kind === 'task';
     child.title.set(row.name);
+    parent.showTab(parent.tabs().findIndex((g) => g.items.includes(row))); // a task's status
     const at = parent.items().indexOf(row); // -1 when a search hides it
     if (at >= 0) parent.highlight.set(at);
     return true;

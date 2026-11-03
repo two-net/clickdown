@@ -102,13 +102,19 @@ code,kbd,pre{font-family:var(--mono)}
 /* In the search box, ↑ ↓ and Enter work on the selected row, so it's marked as when the rows have focus. */
 .view:has(.find:focus) .row[aria-selected="true"]{box-shadow:inset 0 0 0 2px var(--d4)}
 
+/* Status tabs, under the search in a list: one per status with tasks, as wide as the rows and closing the head */
+.status-tabs{display:flex;max-width:980px;margin:12px -12px -4px;overflow-x:auto;scrollbar-width:thin;border-bottom:1px solid var(--rule)}
+.status-tab{position:relative;display:inline-flex;align-items:center;gap:7px;flex:none;padding:7px 12px 10px;border:0;border-radius:8px 8px 0 0;background:none;font-size:14px;font-weight:620;color:var(--slate);white-space:nowrap}
+.status-tab:hover{background:color-mix(in srgb,var(--d3) 7%,transparent);color:var(--ink)}
+.status-tab:focus-visible{outline-offset:-2px}
+.status-tab[aria-selected="true"]{color:var(--ink)}
+.status-tab[aria-selected="true"]::after{content:"";position:absolute;left:8px;right:8px;bottom:0;height:3px;border-radius:2px 2px 0 0;background:var(--depth)}
+.status-tab .count{font-weight:400;color:var(--faint)}
+
 /* Rows */
 .rows{max-width:980px;outline:none;container-type:inline-size}
-.group-head{display:flex;align-items:center;gap:8px;padding:18px 12px 6px;font-size:14px;font-weight:620;color:var(--slate)}
-.group-head .count{font-weight:400;color:var(--faint)}
 .sub-head{margin:6px 0 2px;padding:12px 12px 4px;font-size:14px;font-weight:620;color:var(--slate)}
 .row{position:relative;display:grid;grid-template-columns:24px minmax(0,1fr) auto;align-items:center;column-gap:12px;min-height:46px;padding:9px 12px;border-radius:8px;cursor:pointer;user-select:none;scroll-margin:8px 0}
-.group-head + .row{scroll-margin-top:48px}
 .row:hover{background:color-mix(in srgb,var(--d3) 7%,transparent)}
 .row[aria-selected="true"]{background:color-mix(in srgb,var(--depth) 17%,transparent)}
 .row[aria-selected="true"]::before{content:"";position:absolute;left:0;top:9px;bottom:9px;width:3px;border-radius:2px;background:var(--depth)}

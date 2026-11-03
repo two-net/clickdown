@@ -66,7 +66,9 @@ export class App {
   }
 
   protected onKey(event: KeyboardEvent) {
-    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    // [ and ] take Option or AltGr on some keyboards (AltGr also reports Ctrl); Cmd+[ stays the browser's Back.
+    const bracket = (event.key === '[' || event.key === ']') && event.altKey && !event.metaKey;
+    if ((event.ctrlKey || event.metaKey || event.altKey) && !bracket) return;
     const help = this.help()?.nativeElement;
     if (help?.open) { // the dialog handles Esc itself
       if (event.key === '?') {
@@ -86,6 +88,7 @@ export class App {
     if (!frame) return;
     // A task scrolls, unless its subtasks have focus (the selection is hidden otherwise).
     const scroll = frame.kind === 'task' && !target?.closest('.task-doc .rows');
+    const onTabs = !!target?.closest('[role="tablist"]'); // where ← and → move between the tabs
     switch (event.key) {
       case 'ArrowDown': case 'j': case 'J': this.move(frame, 1, scroll); break;
       case 'ArrowUp': case 'k': case 'K': this.move(frame, -1, scroll); break;
@@ -93,7 +96,8 @@ export class App {
       case 'PageUp': this.move(frame, -10, scroll); break;
       case 'Home': this.move(frame, -Infinity, scroll); break;
       case 'End': this.move(frame, Infinity, scroll); break;
-      case 'Enter': case 'ArrowRight': if (!scroll) this.nav.activate(frame); break;
+      case 'Enter': if (!scroll) this.nav.activate(frame); break;
+      case 'ArrowRight': if (onTabs) this.turn(frame, 1); else if (!scroll) this.nav.activate(frame); break;
       // One step out at a time, so a held key doesn't run through them: the search's text, the search box, the level.
       case 'Escape':
         if (event.repeat) break;
@@ -101,7 +105,9 @@ export class App {
         else if (typing) this.focusIn(frame, '.rows');
         else this.nav.pop();
         break;
-      case 'Backspace': case 'ArrowLeft': this.nav.pop(); break;
+      case 'Backspace': this.nav.pop(); break;
+      case 'ArrowLeft': if (onTabs) this.turn(frame, -1); else this.nav.pop(); break;
+      case '[': case ']': if (!frame.tabs().length) return; this.turn(frame, event.key === ']' ? 1 : -1); break;
       case '/': if (!this.focusIn(frame, '.find')) return; break; // none in a task: the browser keeps its own /
       // A held key repeats ~30 times a second: each sort would say so, and each refresh would cost ClickUp requests.
       case 's': case 'S': if (frame.kind !== 'list' || !frame.ready() || event.repeat) return; this.nav.sortNext(frame); break;
@@ -211,7 +217,7 @@ export class App {
   /** In a task, the movement keys scroll it; everywhere else they move the selection. */
   private move(frame: Frame, by: number, scroll: boolean) {
     if (!scroll) {
-      // From a button (Sort, the rail), focus goes to the rows, where the selection is shown and announced.
+      // From a button (Sort, a tab, the rail), focus goes to the rows, where the selection is shown and announced.
       if (!document.activeElement?.closest('.find, .rows')) this.focusIn(frame, '.rows');
       return frame.move(by);
     }
@@ -220,6 +226,17 @@ export class App {
     const behavior = this.backend.motion() ? 'smooth' : 'auto';
     if (!Number.isFinite(by)) body.scrollTo?.({ top: by > 0 ? body.scrollHeight : 0, behavior });
     else body.scrollBy?.({ top: Math.abs(by) > 1 ? Math.sign(by) * body.clientHeight * 0.85 : by * 72, behavior });
+  }
+
+  /** [ and ], and ← → on the tabs: the status before or after the open one, round the ends. */
+  private turn(frame: Frame, by: number) {
+    const n = frame.tabs().length;
+    if (!n) return;
+    frame.showTab((frame.tabAt() + by + n) % n);
+    const tab = document.getElementById(`v${frame.key}-tab-${frame.tabAt()}`);
+    // On the tabs, focus follows; from the rows, the tab only comes into view (a long strip scrolls sideways).
+    if (document.activeElement?.closest('[role="tablist"]')) tab?.focus();
+    else tab?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   }
 
   /** ClickUp answers /api/user only for a token it accepts; a 401 there shows the stopped screen. */

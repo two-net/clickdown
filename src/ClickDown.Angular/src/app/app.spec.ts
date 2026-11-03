@@ -38,6 +38,8 @@ describe('App', () => {
   const text = (fixture: ComponentFixture<App>) => (fixture.nativeElement as HTMLElement).textContent ?? '';
   const names = (el: HTMLElement) => [...el.querySelectorAll('.row-name')].map((n) => n.textContent);
   const selected = (el: HTMLElement) => el.querySelector('[aria-selected="true"] .row-name')?.textContent;
+  const tabNames = (el: HTMLElement) => [...el.querySelectorAll('[role="tab"]')].map((t) => t.textContent);
+  const openTab = (el: HTMLElement) => el.querySelector('[role="tab"][aria-selected="true"]')?.textContent;
   const rail = (el: HTMLElement) => [...el.querySelectorAll('.lvl-value')].map((v) => v.textContent);
   async function settle(fixture: ComponentFixture<App>) {
     await new Promise((done) => setTimeout(done));
@@ -117,7 +119,7 @@ describe('App', () => {
     expect(document.title).toBe('ClickDown stopped');
   });
 
-  it('groups a list by status, pages through it, and survives a failed page', async () => {
+  it('shows a list’s statuses as tabs, pages through it, and survives a failed page', async () => {
     const fixture = await openList();
     http.expectOne('/api/list/7/task?page=0').flush({
       tasks: [
@@ -129,9 +131,11 @@ describe('App', () => {
     });
     await settle(fixture);
     const el = fixture.nativeElement as HTMLElement;
-    const heads = [...el.querySelectorAll('.group-head')].map((h) => h.textContent);
-    expect(heads).toEqual(['To do1', 'In progress2']);
-    expect([...el.querySelectorAll('.task-id')].map((id) => id.textContent)).toEqual(['ID BUG-12', 'ID a', 'ID c']); // custom ID first
+    const ids = () => [...el.querySelectorAll('.task-id')].map((id) => id.textContent);
+    expect(tabNames(el)).toEqual(['To do1', 'In progress2']); // in the workflow's order
+    expect(openTab(el)).toBe('To do1');
+    expect(names(el)).toEqual(['Task b', 'Load more tasks']);
+    expect(ids()).toEqual(['ID BUG-12']); // custom ID first
     expect(el.querySelector('.task-id')?.getAttribute('title')).toBe('BUG-12'); // in full, however narrow the column
     const created = el.querySelectorAll('.created'); // only task b has a date
     expect(created.length).toBe(1);
@@ -140,6 +144,9 @@ describe('App', () => {
     expect(text(fixture)).toContain('3 open tasks so far, closed ones hidden');
     expect(el.querySelectorAll('.lvl.stem-on').length).toBe(4);
     expect(text(fixture)).toContain('No folder');
+    press(']');
+    await settle(fixture);
+    expect(ids()).toEqual(['ID a', 'ID c']);
 
     press('End');
     press('Enter');
@@ -156,10 +163,14 @@ describe('App', () => {
     press('Enter');
     http.expectOne('/api/list/7/task?page=1').flush({ tasks: [task('c', 'in progress', 1), task('d', 'to do', 0)], last_page: true });
     await settle(fixture);
-    expect(text(fixture)).toContain('Loaded 1 more task. That’s all of them.');
+    expect(text(fixture)).toContain('Loaded 1 more task, none in In progress. That’s all of them.'); // it's in To do
     expect(text(fixture)).toContain('4 open tasks, closed ones hidden');
-    expect(el.querySelector('[aria-selected="true"]')?.textContent).toContain('Task d');
+    expect(tabNames(el)).toEqual(['To do2', 'In progress2']);
+    expect(selected(el)).toBe('Task c'); // where Load more was
     expect(text(fixture)).not.toContain('Load more tasks');
+    press('[');
+    await settle(fixture);
+    expect(names(el)).toEqual(['Task b', 'Task d']);
   });
 
   it('keeps the rows when a refresh fails, and the keys keep working', async () => {
@@ -282,7 +293,7 @@ describe('App', () => {
   });
 
   it('opens at the address, names each level from the one above, and follows Back and Forward', async () => {
-    const crash = task('a', 'to do', 0, { name: 'Crash on save' });
+    const crash = task('a', 'in progress', 1, { name: 'Crash on save' });
     const openTask = () => {
       http.expectOne('/api/task/a/comment').flush({ comments: [], has_more: false });
       http.expectOne('/api/task/a').flush({ ...crash, subtasks: [], description_html: '', attachments: [] });
@@ -310,6 +321,7 @@ describe('App', () => {
     await settle(fixture);
     expect(rail(el)).toEqual(['Acme', 'Eng', 'No folder', 'Bugs']);
     expect(document.title).toBe('Bugs – ClickDown');
+    expect(openTab(el)).toBe('In progress1'); // its status, not the first
     expect(selected(el)).toBe('Crash on save'); // the row it came from
 
     location.back(); // the task again, loaded afresh
@@ -468,7 +480,7 @@ describe('App', () => {
     };
 
     press('End');
-    press('ArrowUp'); // Task c
+    press('ArrowUp'); // Task b, in To do
     expect(press('/')).toBe(false);
     expect(document.activeElement).toBe(box());
     await search('task'); // typing selects the first match
@@ -476,19 +488,20 @@ describe('App', () => {
     expect(text(fixture)).toContain('2 matches among 3 open tasks');
     await search('CAFE');
     expect(names(el)).toEqual(['Café crash', 'Load more tasks']);
-    expect([...el.querySelectorAll('.group-head')].map((h) => h.textContent)).toEqual(['To do1']);
+    expect(tabNames(el)).toEqual(['To do1']); // only statuses with matches
     expect(text(fixture)).toContain('1 match among 3 open tasks so far, closed ones hidden');
-    expect(box().getAttribute('aria-activedescendant')).toBe(el.querySelector('[aria-selected="true"]')?.id);
+    expect(box().getAttribute('aria-activedescendant')).toBe(el.querySelector('.row[aria-selected="true"]')?.id);
     expect(box().getAttribute('aria-controls')).toBe(rows().id);
     const composing = { key: 'Enter', bubbles: true, cancelable: true };
     expect(box().dispatchEvent(new KeyboardEvent('keydown', { ...composing, isComposing: true }))).toBe(true); // left to the IME
     expect(box().dispatchEvent(new KeyboardEvent('keydown', { ...composing, keyCode: 229 }))).toBe(true); // Safari's
     await search('zoe bug-12'); // an assignee, and the ID the row shows
     expect(names(el)).toEqual(['Task c', 'Load more tasks']);
+    expect(openTab(el)).toBe('In progress1'); // the tab goes where the matches are
     await search('UI'); // a tag
     expect(names(el)).toEqual(['Task b', 'Load more tasks']);
 
-    for (const key of ['j', 'k', 'r', 's', '?', '/', ' ', 'Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Home', 'End']) {
+    for (const key of ['j', 'k', 'r', 's', '[', ']', '?', '/', ' ', 'Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Home', 'End']) {
       expect(press(key, box())).toBe(true); // left to the box
     }
     await settle(fixture);
@@ -515,10 +528,11 @@ describe('App', () => {
     expect(document.activeElement).toBe(rows());
     press('/'); // selects the text, so typing starts afresh
     expect([box().selectionStart, box().selectionEnd]).toEqual([0, 3]);
-    press('Escape', rows()); // clears the search, and stays on the row
+    press('Escape', rows()); // clears the search, and stays on the row, in its tab
     await settle(fixture);
     expect(box().value).toBe('');
-    expect(names(el)).toEqual(['Café crash', 'Task b', 'Task c', 'Load more tasks']);
+    expect(tabNames(el)).toEqual(['To do2', 'In progress1']);
+    expect(names(el)).toEqual(['Task c', 'Load more tasks']);
     expect(selected(el)).toBe('Task c');
     expect(document.title).toBe('Bugs – ClickDown');
 
@@ -561,14 +575,14 @@ describe('App', () => {
     await settle(fixture);
     const el = fixture.nativeElement as HTMLElement;
     const button = () => el.querySelector<HTMLButtonElement>('.tools .btn')!;
-    const order = () => names(el).slice(0, 3); // the "to do" group
+    const order = () => names(el).slice(0, 3); // the To do tab
     expect(button().textContent).toContain('Sort: ClickUp’s order');
 
     press('ArrowDown');
     press('ArrowDown');
     expect(press('s')).toBe(false);
     await settle(fixture);
-    expect(names(el)).toEqual(['Task 11', 'Task 9', 'Task 10', 'Task d', 'Load more tasks']);
+    expect(names(el)).toEqual(['Task 11', 'Task 9', 'Task 10', 'Load more tasks']); // Task d is in In progress's tab
     expect(text(fixture)).toContain('Sorted by due date, soonest first, among the 4 tasks loaded so far.');
     expect(selected(el)).toBe('Task 11');
     expect(button().textContent).toContain('Sort: Due date');
@@ -610,6 +624,83 @@ describe('App', () => {
     await settle(fixture);
     expect(text(fixture)).toContain('Sorted by priority, urgent first.'); // every task is loaded now
     expect(text(fixture)).not.toContain('loaded so far');
+  });
+
+  it('shows one tab per status: [ ], a click, and ← → on the tabs switch them, and a list keeps its tab', async () => {
+    const fixture = await openList();
+    const page = (moved = false) => ({
+      tasks: [task('a', 'to do', 0), task('b', moved ? 'review' : 'in progress', 1), task('c', 'review', 2), task('d', moved ? 'review' : 'in progress', 1)],
+      last_page: true,
+    });
+    http.expectOne('/api/list/7/task?page=0').flush(page());
+    await settle(fixture);
+    const el = fixture.nativeElement as HTMLElement;
+    const tabs = () => [...el.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    const key = (init: KeyboardEventInit) => document.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
+    const refresh = async (moved = false) => {
+      press('r');
+      http.expectOne('/api/settings').flush({ animations: false, only_lists: [] });
+      await settle(fixture);
+      http.expectOne('/api/list/7/task?page=0').flush(page(moved));
+      await settle(fixture);
+    };
+    expect(tabNames(el)).toEqual(['To do1', 'In progress2', 'Review1']);
+    expect(openTab(el)).toBe('To do1');
+    expect(tabs().map((t) => t.tabIndex)).toEqual([0, -1, -1]); // Tab reaches the open one
+    const panel = el.querySelector('[role="tabpanel"]')!;
+    expect(panel.getAttribute('aria-labelledby')).toBe(tabs()[0].id);
+    expect(tabs()[0].getAttribute('aria-controls')).toBe(panel.id);
+
+    expect(press('[')).toBe(false); // round the start
+    await settle(fixture);
+    expect(openTab(el)).toBe('Review1');
+    expect(names(el)).toEqual(['Task c']);
+    press(']'); // round the end
+    await settle(fixture);
+    expect(openTab(el)).toBe('To do1');
+    key({ key: ']', altKey: true }); // Option or AltGr types it on some keyboards
+    await settle(fixture);
+    expect(openTab(el)).toBe('In progress2');
+    expect(selected(el)).toBe('Task b'); // a tab opens on its first task
+    expect(key({ key: '[', metaKey: true })).toBe(true); // Cmd+[ is the browser's Back
+    await settle(fixture);
+    expect(openTab(el)).toBe('In progress2');
+
+    tabs()[2].click();
+    tabs()[2].focus(); // where a click leaves it in a browser
+    await settle(fixture);
+    expect(openTab(el)).toBe('Review1');
+    press('ArrowLeft', tabs()[2]);
+    await settle(fixture);
+    expect(openTab(el)).toBe('In progress2');
+    expect(document.activeElement).toBe(tabs()[1]); // focus follows on the tabs
+    press('ArrowRight', tabs()[1]);
+    await settle(fixture);
+    expect(openTab(el)).toBe('Review1');
+    expect(document.title).toBe('Bugs – ClickDown'); // ← and → on the tabs neither go back nor open
+    press('ArrowDown', tabs()[2]); // into the rows
+    expect(document.activeElement).toBe(el.querySelector('.rows'));
+
+    press('[');
+    await settle(fixture);
+    press('ArrowDown'); // Task d
+    await refresh(); // the tab and the row stay
+    expect(openTab(el)).toBe('In progress2');
+    expect(selected(el)).toBe('Task d');
+    press('Enter');
+    http.expectOne('/api/task/d/comment').flush({ comments: [], has_more: false });
+    http.expectOne('/api/task/d').flush({ ...task('d', 'in progress', 1), subtasks: [], description_html: '', attachments: [] });
+    await settle(fixture);
+    expect(press('[')).toBe(true); // a task has no tabs
+    press('Escape');
+    await settle(fixture);
+    expect(openTab(el)).toBe('In progress2'); // back where it was
+    expect(selected(el)).toBe('Task d');
+
+    await refresh(true); // its tasks moved on in ClickUp: the first tab opens
+    expect(tabNames(el)).toEqual(['To do1', 'Review3']);
+    expect(openTab(el)).toBe('To do1');
+    expect(names(el)).toEqual(['Task a']);
   });
 
   it('searches names on every screen, and says when nothing matches', async () => {

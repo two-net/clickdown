@@ -74,6 +74,16 @@
                   }
                 </div>
               }
+              @if (f.tabs().length) {
+                <div class="status-tabs" role="tablist" aria-label="Statuses" aria-keyshortcuts="[ ]">
+                  @for (g of f.tabs(); track g.status.status; let i = $index) {
+                    <button class="status-tab" type="button" role="tab" [id]="'v' + f.key + '-tab-' + i" [attr.aria-selected]="i === f.tabAt()"
+                            [attr.aria-controls]="'v' + f.key + '-panel'" [tabindex]="i === f.tabAt() ? 0 : -1" (click)="f.showTab(i)">
+                      <span class="sdot" [style.--s]="color(g.status.color)" aria-hidden="true"></span>{{ g.label }}<span class="count num">{{ g.items.length }}</span>
+                    </button>
+                  }
+                </div>
+              }
             </header>
             @if (backend.retryIn()) {
               <div class="banner" role="status">ClickUp’s rate limit is reached. ClickDown retries in {{ backend.retryIn() }} s.</div>
@@ -90,7 +100,9 @@
               } @else if (f.kind === 'task') {
                 <app-task-detail [frame]="f" />
               } @else {
-                <app-item-list [frame]="f" />
+                @let tabbed = f.tabs().length > 0;
+                <app-item-list [frame]="f" [attr.id]="tabbed ? 'v' + f.key + '-panel' : null" [attr.role]="tabbed ? 'tabpanel' : null"
+                               [attr.aria-labelledby]="tabbed ? 'v' + f.key + '-tab-' + f.tabAt() : null" />
               }
             </div>
           </section>
@@ -139,6 +151,7 @@
         <tr><td><kbd>Home</kbd> <kbd>End</kbd></td><td>First or last item</td></tr>
         <tr><td><kbd>Page Up</kbd> <kbd>Page Down</kbd></td><td>Move ten items, or scroll a task</td></tr>
         <tr><td><kbd>/</kbd></td><td>Search this screen; <kbd>↑</kbd><kbd>↓</kbd> and <kbd>Enter</kbd> still work</td></tr>
+        <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>In a list, the previous or next status</td></tr>
         <tr><td><kbd>S</kbd></td><td>In a list, sort the tasks another way</td></tr>
         <tr><td><kbd>Tab</kbd></td><td>In a task, reach its subtasks</td></tr>
         <tr><td><kbd>R</kbd></td><td>Refresh this screen</td></tr>

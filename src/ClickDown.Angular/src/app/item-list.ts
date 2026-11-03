@@ -3,7 +3,7 @@ import { age, cap, color, dueInfo, plural, stamp } from './format';
 import { Task } from './models';
 import { Frame, Kind, Navigator } from './navigator';
 
-/** The one listbox: workspaces, spaces, folders, lists, tasks, and a task's subtasks. */
+/** The one listbox: workspaces, spaces, folders, lists, tasks (one status at a time, its tab above), and a task's subtasks. */
 @Component({
   selector: 'app-item-list',
   template: `
@@ -22,9 +22,7 @@ import { Frame, Kind, Navigator } from './navigator';
            [attr.aria-activedescendant]="f.active()">
         @for (g of f.groups(); track $index; let gi = $index) {
           <div role="group" [attr.aria-label]="g.status ? g.label + ', ' + plural(g.items.length, 'task') : g.label">
-            @if (g.status) {
-              <div class="group-head" aria-hidden="true"><span class="sdot" [style.--s]="color(g.status.color)"></span>{{ g.label }}<span class="count num">{{ g.items.length }}</span></div>
-            } @else if (g.label) {
+            @if (g.label && !g.status) {
               <div class="sub-head" aria-hidden="true">{{ g.label }}</div>
             }
             @for (item of g.items; track item.open + item.id; let j = $index) {
@@ -97,7 +95,7 @@ export class ItemList {
     let last = ''; // no scrolling on the first render: a task view must stay at its top
     afterRenderEffect(() => {
       const f = this.frame();
-      const at = `${f.highlight()} ${f.query()} ${f.sort()}`; // a search or a sort moves the rows under the selection too
+      const at = `${f.highlight()} ${f.query()} ${f.sort()} ${f.tab()}`; // a search, a sort or a tab moves the rows under the selection too
       if (last && at !== last) host.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest' });
       last = at;
     });
