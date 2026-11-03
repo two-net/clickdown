@@ -114,7 +114,7 @@ code,kbd,pre{font-family:var(--mono)}
 /* Rows */
 .rows{max-width:980px;outline:none;container-type:inline-size}
 .sub-head{margin:6px 0 2px;padding:12px 12px 4px;font-size:14px;font-weight:620;color:var(--slate)}
-.row{position:relative;display:grid;grid-template-columns:24px minmax(0,1fr) auto;align-items:center;column-gap:12px;min-height:46px;padding:9px 12px;border-radius:8px;cursor:pointer;user-select:none;scroll-margin:8px 0}
+.row{position:relative;display:grid;grid-template-columns:24px minmax(0,1fr) auto;align-items:center;column-gap:12px;min-height:46px;padding:9px 12px;border-radius:8px;cursor:pointer;user-select:none;scroll-margin:8px 0;color:inherit;text-decoration:none}
 .row:hover{background:color-mix(in srgb,var(--d3) 7%,transparent)}
 .row[aria-selected="true"]{background:color-mix(in srgb,var(--depth) 17%,transparent)}
 .row[aria-selected="true"]::before{content:"";position:absolute;left:0;top:9px;bottom:9px;width:3px;border-radius:2px;background:var(--depth)}

@@ -131,7 +131,8 @@ Every screen has its own address after the `#`, such as `http://127.0.0.1:4280/#
 the browser's Back and Forward buttons, reloading and bookmarks all work. (Esc goes up a level; Back goes to the
 screen you saw before.) Opening an address loads every level on the way, so the rail is complete and going back is
 instant. An address that no longer fits, such as a list that has since moved into a folder, opens as far as it
-still does.
+still does. Every row is a link to its screen, so the browser's **Open Link in New Tab** and **Copy Link**,
+Cmd/Ctrl-click and middle-click all work on it.
 
 Folders and lists that someone shared with you directly (ClickUp's **Shared with me**) appear after the Spaces
 in their Workspace, under *Shared with you*. You can open them even if you can't open the Space they live in.

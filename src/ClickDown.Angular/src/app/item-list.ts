@@ -19,7 +19,7 @@ import { Frame, Kind, Navigator } from './navigator';
       <div class="state"><p>{{ f.all().length ? 'Nothing here matches “' + f.query().trim() + '”. Esc clears the search.' : empty[f.kind] }}</p></div>
     } @else {
       <div class="rows" role="listbox" tabindex="0" [id]="'v' + f.key + '-rows'" [attr.aria-label]="f.kind === 'task' ? 'Subtasks' : f.name()"
-           [attr.aria-activedescendant]="f.active()">
+           [attr.aria-activedescendant]="f.active()" (focusin)="keepFocus($event)">
         @for (g of f.groups(); track $index; let gi = $index) {
           <div role="group" [attr.aria-label]="g.status ? g.label + ', ' + plural(g.items.length, 'task') : g.label">
             @if (g.label && !g.status) {
@@ -27,8 +27,8 @@ import { Frame, Kind, Navigator } from './navigator';
             }
             @for (item of g.items; track item.open + item.id; let j = $index) {
               @let i = starts()[gi] + j;
-              <div class="row" [class.more]="item.open === 'more'" role="option" [id]="f.optionId(item)"
-                   [attr.aria-selected]="i === f.highlight()" (click)="click(f, i, $event)">
+              <a class="row" [class.more]="item.open === 'more'" role="option" tabindex="-1" [id]="f.optionId(item)" [attr.href]="nav.href(f, item)"
+                 [attr.aria-selected]="i === f.highlight()" (click)="click(f, i, $event)">
                 @if (item.task; as t) {
                   @let due = dueInfo(t.due_date, t.status.type === 'closed');
                   @let id = t.custom_id || t.id;
@@ -58,7 +58,7 @@ import { Frame, Kind, Navigator } from './navigator';
                     }
                   </span>
                 }
-              </div>
+              </a>
             }
           </div>
         }
@@ -107,9 +107,20 @@ export class ItemList {
     return ItemList.NAMES.format(task.assignees.map((a) => a.username ?? '?'));
   }
 
-  /** A click focuses the list, so the keys go on from here, then opens the row. */
+  /**
+   * A click focuses the list, so the keys go on from here, then opens the row. Cmd, Ctrl or Shift leaves a row's link
+   * to the browser: a new tab or window. Otherwise <base target="_blank"> would open it in a new tab, and Alt would download it.
+   */
   protected click(frame: Frame, index: number, event: MouseEvent) {
-    (event.currentTarget as HTMLElement).closest<HTMLElement>('.rows')?.focus({ preventScroll: true });
+    const row = event.currentTarget as HTMLAnchorElement;
+    if ((event.metaKey || event.ctrlKey || event.shiftKey) && row.hasAttribute('href')) return;
+    event.preventDefault();
+    row.closest<HTMLElement>('.rows')?.focus({ preventScroll: true });
     this.nav.open(frame, index);
+  }
+
+  /** A row is a link, which can take the focus (a right-click does in some browsers): the list keeps it, so Enter opens the selected row. */
+  protected keepFocus(event: FocusEvent) {
+    if (event.target !== event.currentTarget) (event.currentTarget as HTMLElement).focus({ preventScroll: true });
   }
 }

@@ -292,6 +292,35 @@ describe('App', () => {
     expect(TestBed.inject(Location).path()).toBe('/list/7/task/a/task/s');
   });
 
+  it('makes each row a link to its address, and opens it in place unless Cmd, Ctrl or Shift leaves it to the browser', async () => {
+    const fixture = await openList();
+    http.expectOne('/api/list/7/task?page=0').flush({ tasks: [task('b', 'to do', 0)], last_page: false });
+    await settle(fixture);
+    const el = fixture.nativeElement as HTMLElement;
+    const location = TestBed.inject(Location);
+    const rows = () => [...el.querySelectorAll<HTMLAnchorElement>('.row')];
+    expect(rows().map((r) => r.getAttribute('href'))).toEqual(['#/workspace/9/space/5/list/7/task/b', null]); // Load more isn't one
+    rows()[0].focus(); // as a right-click does in some browsers
+    expect(document.activeElement).toBe(el.querySelector('.rows')); // the list keeps the focus
+    /** Clicks Task b; true when the app left the click to the browser, which jsdom isn't let follow. */
+    const click = (init: MouseEventInit = {}) => {
+      let left = false;
+      document.addEventListener('click', (e) => { left = !e.defaultPrevented; e.preventDefault(); }, { once: true });
+      rows()[0].dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ...init }));
+      return left;
+    };
+
+    for (const init of [{ metaKey: true }, { ctrlKey: true }, { shiftKey: true }]) expect(click(init)).toBe(true);
+    await settle(fixture);
+    expect(location.path()).toBe('/workspace/9/space/5/list/7'); // nothing asked of ClickUp either: afterEach's verify()
+
+    expect(click()).toBe(false);
+    http.expectOne('/api/task/b/comment').flush({ comments: [], has_more: false });
+    http.expectOne('/api/task/b').flush({ ...task('b', 'to do', 0), subtasks: [], description_html: '', attachments: [] });
+    await settle(fixture);
+    expect(location.path()).toBe('/workspace/9/space/5/list/7/task/b');
+  });
+
   it('opens at the address, names each level from the one above, and follows Back and Forward', async () => {
     const crash = task('a', 'in progress', 1, { name: 'Crash on save' });
     const openTask = () => {

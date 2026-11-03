@@ -305,6 +305,13 @@ export class Navigator {
     this.go(address([...this.stack(), { kind, id }]));
   }
 
+  /** A row's address, so the browser treats the row as a link: its context menu, Cmd/Ctrl-click and middle-click open it in a new tab. */
+  href(frame: Frame, item: Item): string | null {
+    const stack = this.stack();
+    const at = stack.indexOf(frame); // -1 for a view on its way out
+    return item.open === 'more' || at < 0 ? null : '#' + address([...stack.slice(0, at + 1), { kind: item.open, id: item.id }]);
+  }
+
   popTo(index: number) {
     if (index < 0 || index >= this.stack().length - 1) return;
     this.go(address(this.stack().slice(0, index + 1)));
